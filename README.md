@@ -1,0 +1,1 @@
+# world-impulsive-indicator
