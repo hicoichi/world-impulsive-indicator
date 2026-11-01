@@ -1,4 +1,5 @@
 import type { APIGatewayProxyEventV2, APIGatewayProxyStructuredResultV2 } from 'aws-lambda'
+import { VOTE_LIMIT } from '../../../shared/domain/vote'
 import { createApiHandler, SESSION_TOKEN_HEADER, type ApiDeps } from '../../lambda/world-api/app'
 import { renewSession, verifySession } from '../../lambda/world-api/session-token'
 import { MemoryVoteStore } from './memory-vote-store'
@@ -55,7 +56,7 @@ describe('POST /v1/sessions', () => {
     expect(response.headers?.['cache-control']).toBe('no-store')
     const body = parse(response)
     expect(verifySession(body.token, KEY, NOW)).not.toBeNull()
-    expect(body.remaining).toEqual({ ikki: 10, exodus: 10, festival: 10 })
+    expect(body.remaining).toEqual({ ikki: VOTE_LIMIT, exodus: VOTE_LIMIT, festival: VOTE_LIMIT })
   })
 })
 
@@ -73,7 +74,7 @@ describe('GET /v1/sessions/me', () => {
     expect(response.statusCode).toBe(200)
     expect(response.headers?.['cache-control']).toBe('no-store')
     const body = parse(response)
-    expect((body.remaining as Record<string, number>).ikki).toBe(9)
+    expect((body.remaining as Record<string, number>).ikki).toBe(VOTE_LIMIT - 1)
     expect(verifySession(body.token, KEY, NOW)?.sid).toBe(SID)
   })
 })
@@ -84,7 +85,7 @@ describe('POST /v1/votes', () => {
     const response = await handler(event('POST /v1/votes', { token, body: { impulse: 'ikki', voteId: 'v1', region: 'kanto' } }))
     expect(response.statusCode).toBe(200)
     expect(response.headers?.['cache-control']).toBe('no-store')
-    expect(parse(response)).toMatchObject({ result: 'accepted', remaining: { ikki: 9 } })
+    expect(parse(response)).toMatchObject({ result: 'accepted', remaining: { ikki: VOTE_LIMIT - 1 } })
   })
 
   test.each([
@@ -101,13 +102,13 @@ describe('POST /v1/votes', () => {
     const { handler } = setup()
     await handler(event('POST /v1/votes', { token, body: { impulse: 'ikki', voteId: 'v1' } }))
     const response = await handler(event('POST /v1/votes', { token, body: { impulse: 'ikki', voteId: 'v1' } }))
-    expect(parse(response)).toMatchObject({ result: 'duplicate', remaining: { ikki: 9 } })
+    expect(parse(response)).toMatchObject({ result: 'duplicate', remaining: { ikki: VOTE_LIMIT - 1 } })
   })
 
   test('上限に達すると 409', async () => {
     const { handler } = setup()
-    for (let i = 0; i < 10; i++) await handler(event('POST /v1/votes', { token, body: { impulse: 'ikki', voteId: `v${i}` } }))
-    const response = await handler(event('POST /v1/votes', { token, body: { impulse: 'ikki', voteId: 'v10' } }))
+    for (let i = 0; i < VOTE_LIMIT; i++) await handler(event('POST /v1/votes', { token, body: { impulse: 'ikki', voteId: `v${i}` } }))
+    const response = await handler(event('POST /v1/votes', { token, body: { impulse: 'ikki', voteId: 'over' } }))
     expect(response.statusCode).toBe(409)
     expect(parse(response)).toMatchObject({ error: 'limit', remaining: { ikki: 0 } })
   })

@@ -6,7 +6,7 @@ const API = process.env.E2E_API_BASE_URL ?? ''
 test.skip(!API, 'E2E_API_BASE_URL を指定したときだけ動かす')
 
 const regions = { hokkaido: 0, tohoku: 0, kanto: 3, chubu: 0, kinki: 1, chugoku: 0, shikoku: 0, kyushu: 0, unknown: 0 }
-const FULL = { ikki: 10, exodus: 10, festival: 10 }
+const FULL = { ikki: 100, exodus: 100, festival: 100 }
 
 function json(route: Route, status: number, body: unknown) {
   return route.fulfill({ status, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(body) })

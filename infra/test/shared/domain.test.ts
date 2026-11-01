@@ -18,16 +18,16 @@ describe('衝動', () => {
 })
 
 describe('上限とウィンドウ', () => {
-  test('上限は10票、ウィンドウは12時間', () => {
-    expect(VOTE_LIMIT).toBe(10)
+  test('上限は100票、ウィンドウは12時間', () => {
+    expect(VOTE_LIMIT).toBe(100)
     expect(VOTE_WINDOW_MS).toBe(12 * 60 * 60 * 1000)
   })
 
-  test('10票目は受け付け、11票目は拒否する', () => {
-    expect(hasReachedLimit(9)).toBe(false)
-    expect(hasReachedLimit(10)).toBe(true)
-    expect(remainingVotes(10)).toBe(0)
-    expect(remainingVotes(12)).toBe(0)
+  test('100票目は受け付け、101票目は拒否する', () => {
+    expect(hasReachedLimit(99)).toBe(false)
+    expect(hasReachedLimit(100)).toBe(true)
+    expect(remainingVotes(100)).toBe(0)
+    expect(remainingVotes(120)).toBe(0)
   })
 
   test('投票からちょうど12時間で対象外になる', () => {
@@ -53,7 +53,8 @@ describe('寄与度', () => {
     expect(CONTRIBUTION_SCALE).toBe(1000)
     expect(contributionUnitsOf(1)).toBe(1000)
     const units = Array.from({ length: VOTE_LIMIT }, (_, i) => contributionUnitsOf(i + 1)).reduce((a, b) => a + b, 0)
-    expect(Math.abs(unitsToContribution(units) - Math.sqrt(VOTE_LIMIT))).toBeLessThan(0.005)
+    // 1票あたりの丸めの誤差は最大 0.0005
+    expect(Math.abs(unitsToContribution(units) - Math.sqrt(VOTE_LIMIT))).toBeLessThan(0.0005 * VOTE_LIMIT)
   })
 
   test.each([0, -1, 1.5, Number.NaN])('票の順番が不正ならエラー（%s）', (n) => {

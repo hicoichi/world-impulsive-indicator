@@ -1,3 +1,4 @@
+import { VOTE_LIMIT } from '../../../shared/domain/vote'
 import { castVote, getRemaining, getState, VoteConflictError, type VoteServiceDeps } from '../../lambda/world-api/vote-service'
 import { MemoryVoteStore } from './memory-vote-store'
 
@@ -22,25 +23,25 @@ describe('castVote', () => {
   test('受け付けると集計と残り枠に反映される', async () => {
     const { deps } = setup()
     const result = await castVote(deps, 's1', 'ikki', 'v1', 'kanto')
-    expect(result).toEqual({ status: 'accepted', remaining: { ikki: 9, exodus: 10, festival: 10 } })
+    expect(result).toEqual({ status: 'accepted', remaining: { ikki: VOTE_LIMIT - 1, exodus: VOTE_LIMIT, festival: VOTE_LIMIT } })
     const state = await getState(deps)
     expect(state.ikki.votes).toBe(1)
     expect(state.ikki.momentum).toBe(1)
     expect(state.ikki.regions.kanto).toBe(1)
   })
 
-  test('10票目は受け付け、11票目は上限', async () => {
+  test('100票目は受け付け、101票目は上限', async () => {
     const { deps } = setup()
-    await voteTimes(deps, 's1', 10)
+    await voteTimes(deps, 's1', VOTE_LIMIT)
     expect((await getRemaining(deps, 's1')).ikki).toBe(0)
-    const result = await castVote(deps, 's1', 'ikki', 'v10', 'unknown')
+    const result = await castVote(deps, 's1', 'ikki', 'over', 'unknown')
     expect(result.status).toBe('limit')
-    expect((await getState(deps)).ikki.votes).toBe(10)
+    expect((await getState(deps)).ikki.votes).toBe(VOTE_LIMIT)
   })
 
   test('上限はセッションごと・衝動ごとに独立', async () => {
     const { deps } = setup()
-    await voteTimes(deps, 's1', 10)
+    await voteTimes(deps, 's1', VOTE_LIMIT)
     expect((await castVote(deps, 's1', 'exodus', 'e1', 'unknown')).status).toBe('accepted')
     expect((await castVote(deps, 's2', 'ikki', 'x1', 'unknown')).status).toBe('accepted')
   })
@@ -60,14 +61,14 @@ describe('castVote', () => {
     const result = await castVote(deps, 's1', 'ikki', 'same', 'unknown')
     expect(result.status).toBe('duplicate')
     expect((await getState(deps)).ikki.votes).toBe(1)
-    expect((await getRemaining(deps, 's1')).ikki).toBe(9)
+    expect((await getRemaining(deps, 's1')).ikki).toBe(VOTE_LIMIT - 1)
   })
 
   test('12時間で枠が回復する', async () => {
     const { deps, advance } = setup()
-    await voteTimes(deps, 's1', 10)
+    await voteTimes(deps, 's1', VOTE_LIMIT)
     advance(WINDOW)
-    expect((await getRemaining(deps, 's1')).ikki).toBe(10)
+    expect((await getRemaining(deps, 's1')).ikki).toBe(VOTE_LIMIT)
     expect((await castVote(deps, 's1', 'ikki', 'again', 'unknown')).status).toBe('accepted')
   })
 
@@ -87,12 +88,12 @@ describe('castVote', () => {
 })
 
 describe('寄与度', () => {
-  test('1人の10票は寄与度の合計が約 √10 になり、票数は10のまま', async () => {
+  test('1人の上限いっぱいの票は寄与度の合計が √上限 になり、票数はそのまま', async () => {
     const { deps } = setup()
-    await voteTimes(deps, 's1', 10)
+    await voteTimes(deps, 's1', VOTE_LIMIT)
     const state = await getState(deps)
-    expect(state.ikki.votes).toBe(10)
-    expect(state.ikki.momentum).toBeCloseTo(Math.sqrt(10), 2)
+    expect(state.ikki.votes).toBe(VOTE_LIMIT)
+    expect(state.ikki.momentum).toBeCloseTo(Math.sqrt(VOTE_LIMIT), 1)
   })
 
   test('10人の1票ずつは寄与度の合計が10になる', async () => {

@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { createImpulseRecord } from '#shared/domain/impulse'
 import { createRegionRecord } from '#shared/domain/region'
+import { VOTE_LIMIT } from '#shared/domain/vote'
 import type { WorldState } from '#shared/domain/worldState'
 import { STATE_FRESHNESS_MS, useWorld } from '../../../app/composables/useWorld'
 import type { Remaining, SubmitResult, WorldSource } from '../../../app/data/worldSource'
 
-const FULL: Remaining = { ikki: 10, exodus: 10, festival: 10 }
+const FULL: Remaining = { ikki: VOTE_LIMIT, exodus: VOTE_LIMIT, festival: VOTE_LIMIT }
 
 function stateWith(votes: number): WorldState {
   return createImpulseRecord(() => ({ votes, momentum: votes, regions: createRegionRecord(() => 0) }))
@@ -64,7 +65,7 @@ describe('useWorld', () => {
     const choice = world.vote('ikki')
     expect(choice?.kind).toBe('normal')
     expect(world.views.ikki.value.count).toBe(101)
-    expect(world.views.ikki.value.remaining).toBe(9)
+    expect(world.views.ikki.value.remaining).toBe(VOTE_LIMIT - 1)
     expect(world.views.exodus.value.count).toBe(100)
   })
 
@@ -83,20 +84,20 @@ describe('useWorld', () => {
     expect(world.views.ikki.value.count).toBe(101)
   })
 
-  test('10票で上限になり、11票目は受け付けない（演出も返さない）', async () => {
+  test('100票で上限になり、101票目は受け付けない（演出も返さない）', async () => {
     const { world, source } = setup()
     await world.refreshState()
-    for (let i = 0; i < 10; i++) expect(world.vote('festival')).not.toBeNull()
+    for (let i = 0; i < VOTE_LIMIT; i++) expect(world.vote('festival')).not.toBeNull()
     expect(world.views.festival.value.limitReached).toBe(true)
     expect(world.vote('festival')).toBeNull()
     await world.settled()
-    expect(source.submitted).toHaveLength(10)
-    expect(world.views.festival.value.count).toBe(110)
+    expect(source.submitted).toHaveLength(VOTE_LIMIT)
+    expect(world.views.festival.value.count).toBe(100 + VOTE_LIMIT)
   })
 
   test('上限は衝動ごとに独立', async () => {
     const { world } = setup()
-    for (let i = 0; i < 10; i++) world.vote('ikki')
+    for (let i = 0; i < VOTE_LIMIT; i++) world.vote('ikki')
     expect(world.vote('exodus')).not.toBeNull()
   })
 
@@ -117,7 +118,7 @@ describe('useWorld', () => {
     world.vote('ikki')
     await world.settled()
     expect(world.views.ikki.value.count).toBe(100)
-    expect(world.views.ikki.value.remaining).toBe(10)
+    expect(world.views.ikki.value.remaining).toBe(VOTE_LIMIT)
   })
 
   test('サーバーが上限と答えた票は取り消し、残り枠をサーバーに合わせる', async () => {

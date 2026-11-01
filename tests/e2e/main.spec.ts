@@ -1,5 +1,8 @@
 import { expect, test, type Page } from '@playwright/test'
 
+/** 1衝動あたりの上限（shared/domain/vote.ts の VOTE_LIMIT と同じ） */
+const VOTE_LIMIT = 100
+
 const NAMES = ['一揆したい', '国外脱出したい', '祭りたい']
 
 /** 表示中（複製でない、読み上げ対象）のパネル */
@@ -113,21 +116,21 @@ test.describe('投票', () => {
     await expect.poll(() => count(page)).toBe(before + 1)
   })
 
-  test('10票で上限になり、ボタンが弱まって一文が出る。11票目は数えない', async ({ page }) => {
+  test('100票で上限になり、ボタンが弱まって一文が出る。101票目は数えない', async ({ page }) => {
     const button = activePanel(page).getByRole('button', { name: '一揆したい に投票する' })
     await expect(activePanel(page).locator('.count')).not.toHaveText('—')
     const before = await count(page)
-    for (let i = 0; i < 10; i++) await button.click()
+    for (let i = 0; i < VOTE_LIMIT; i++) await button.click()
     await expect(button).toHaveAttribute('aria-disabled', 'true')
     await expect(activePanel(page).locator('.limit')).toHaveText('しばらくしてから、また')
     // aria-disabled のボタンは Playwright が押せるまで待つため、強制的に押す
     await button.click({ force: true })
-    await expect.poll(() => count(page)).toBe(before + 10)
+    await expect.poll(() => count(page)).toBe(before + VOTE_LIMIT)
   })
 
   test('上限は衝動ごとに独立している', async ({ page }) => {
     const button = activePanel(page).getByRole('button', { name: '一揆したい に投票する' })
-    for (let i = 0; i < 10; i++) await button.click()
+    for (let i = 0; i < VOTE_LIMIT; i++) await button.click()
     await page.getByRole('button', { name: '国外脱出したい へ移動' }).click()
     await expectActive(page, '国外脱出したい')
     await expect(activePanel(page).getByRole('button', { name: '国外脱出したい に投票する' })).not.toHaveAttribute('aria-disabled', 'true')

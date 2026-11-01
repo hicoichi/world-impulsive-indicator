@@ -2,7 +2,7 @@
 // 姉妹リポジトリ impulsive-momentum-indicator（ad63920）の app/domain/vote.ts と同じ仕様
 
 /** 1ユーザー × 1衝動あたり、ウィンドウ内に投じられる票数の上限 */
-export const VOTE_LIMIT = 10
+export const VOTE_LIMIT = 100
 
 /** 集計ウィンドウ */
 export const VOTE_WINDOW_MS = 12 * 60 * 60 * 1000

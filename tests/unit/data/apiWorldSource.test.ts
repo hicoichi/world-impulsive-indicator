@@ -4,7 +4,7 @@ import { createApiWorldSource, SESSION_TOKEN_HEADER, type TokenStorage } from '.
 const BASE = 'https://api.example.test/'
 const regions = { hokkaido: 0, tohoku: 0, kanto: 1, chubu: 0, kinki: 0, chugoku: 0, shikoku: 0, kyushu: 0, unknown: 0 }
 const STATE = { impulses: { ikki: { votes: 1, momentum: 1, regions }, exodus: { votes: 0, momentum: 0, regions }, festival: { votes: 0, momentum: 0, regions } } }
-const FULL = { ikki: 10, exodus: 10, festival: 10 }
+const FULL = { ikki: 100, exodus: 100, festival: 100 }
 
 function memoryStorage(initial: string | null = null): TokenStorage & { value: string | null } {
   return {

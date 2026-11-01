@@ -12,7 +12,7 @@ vi.mock('../../../app/visuals/stage', () => ({
 }))
 
 function view(partial: Partial<ImpulseView> = {}): ImpulseView {
-  return { count: 12845, visual: IDLE_VISUAL, remaining: 10, limitReached: false, ...partial }
+  return { count: 12845, visual: IDLE_VISUAL, remaining: 100, limitReached: false, ...partial }
 }
 
 function mountScene(props: { impulse?: (typeof IMPULSE_KEYS)[number], view?: ImpulseView, vote?: () => null | { kind: 'rare' } | { kind: 'normal', index: number } } = {}) {
@@ -58,7 +58,7 @@ describe('ImpulseScene', () => {
     expect(button.attributes('aria-disabled')).toBe('true')
     const text = wrapper.get('.limit').text()
     expect(text).toBe('しばらくしてから、また')
-    expect(text).not.toMatch(/12|時間|10|票/)
+    expect(text).not.toMatch(/\d|時間|票/)
   })
 
   test('上限前は一文を出さない', () => {
