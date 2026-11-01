@@ -52,14 +52,22 @@ export interface WorldOptions {
   region?: () => RegionKey | null
 }
 
-function defaultId(): string {
-  return globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
+/** 票 ID の長さ。同じセッションの直近12時間で重ならなければよいので短くする（サーバーの保存を小さくするため） */
+export const VOTE_ID_LENGTH = 8
+
+const ID_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_'
+
+/** 8文字（48 ビット）の乱数の ID。英数字・ハイフン・アンダースコアだけ（サーバーが受け付ける文字） */
+export function createVoteId(): string {
+  const bytes = new Uint8Array(VOTE_ID_LENGTH)
+  globalThis.crypto.getRandomValues(bytes)
+  return Array.from(bytes, b => ID_CHARS[b % ID_CHARS.length]).join('')
 }
 
 export function useWorld(options: WorldOptions) {
   const { source } = options
   const now = options.now ?? Date.now
-  const createId = options.createId ?? defaultId
+  const createId = options.createId ?? createVoteId
   const sleep = options.sleep ?? (ms => new Promise<void>(resolve => setTimeout(resolve, ms)))
 
   const data = reactive<{ state: WorldState | null, remaining: Remaining, pending: Record<ImpulseKey, PendingVote[]> }>({

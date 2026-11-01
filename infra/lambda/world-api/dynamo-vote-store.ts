@@ -3,15 +3,18 @@
 // | 種類         | pk                 | sk                  | 属性                                                         |
 // |--------------|--------------------|---------------------|--------------------------------------------------------------|
 // | 集計の枠     | COUNT#<衝動>       | B#<枠の開始時刻>    | votes（票数）、momentum（寄与度）、r_<地域>（地域ごとの寄与度）、expiresAt |
-// | セッション   | SESSION#<ID>       | IMPULSE#<衝動>      | votes（投票記録）、version、expiresAt                         |
+// | セッション   | SESSION#<ID>       | IMPULSE#<衝動>      | packed（投票記録を詰めた文字列。packed-votes.ts）、version、expiresAt |
 //
-// 寄与度は CONTRIBUTION_SCALE 倍の整数。地域は集計の枠にだけ加算し、セッションの記録には持たない
+// 寄与度は CONTRIBUTION_SCALE 倍の整数。地域は集計の枠にだけ加算し、セッションの記録には持たない。
+// 投票記録は以前、票ごとのマップのリスト（votes）で持っていた。古い形の項目も読めるようにしている
+// （TTL で12時間後に消えるため、2026-11-02 以降は不要になる）
 
 import { TransactionCanceledException } from '@aws-sdk/client-dynamodb'
 import { QueryCommand, TransactWriteCommand, type DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb'
 import { createImpulseRecord, isImpulseKey, type ImpulseKey } from '../../../shared/domain/impulse'
 import { createRegionRecord, type RegionBucket } from '../../../shared/domain/region'
 import type { CastVote } from '../../../shared/domain/vote'
+import { packVotes, unpackVotes } from './packed-votes'
 import type { BucketTotals, CommitVoteInput, CommitVoteResult, SessionVotes, VoteStore } from './vote-store'
 
 /** 枠の開始時刻を文字列で並べ替えられるよう、桁をそろえる */
@@ -37,6 +40,7 @@ export function regionAttribute(region: RegionBucket): string {
   return `r_${region}`
 }
 
+/** 古い形（票ごとのマップのリスト） */
 function toCastVotes(value: unknown): CastVote[] {
   if (!Array.isArray(value)) return []
   return value.filter((vote): vote is CastVote =>
@@ -62,7 +66,7 @@ export function createDynamoVoteStore(client: DynamoDBDocumentClient, tableName:
         const impulse = String(item.sk).replace(/^IMPULSE#/, '')
         if (!isImpulseKey(impulse)) continue
         result[impulse] = {
-          votes: toCastVotes(item.votes),
+          votes: typeof item.packed === 'string' ? unpackVotes(item.packed) : toCastVotes(item.votes),
           version: typeof item.version === 'number' ? item.version : 0,
         }
       }
@@ -80,7 +84,7 @@ export function createDynamoVoteStore(client: DynamoDBDocumentClient, tableName:
                 Item: {
                   pk: sessionKey(input.sid),
                   sk: impulseKey(input.impulse),
-                  votes: input.votes,
+                  packed: packVotes(input.votes),
                   version: input.expectedVersion + 1,
                   expiresAt: input.sessionExpiresAt,
                 },

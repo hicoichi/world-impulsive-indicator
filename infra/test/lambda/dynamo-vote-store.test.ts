@@ -6,7 +6,7 @@ import type { CommitVoteInput } from '../../lambda/world-api/vote-store'
 const INPUT: CommitVoteInput = {
   sid: 'AAAAAAAAAAAAAAAAAAAAAA',
   impulse: 'ikki',
-  votes: [{ id: 'v1', at: 1000 }],
+  votes: [{ id: 'v1', at: 1_800_000_000_000 }],
   expectedVersion: 0,
   sessionExpiresAt: 2000,
   bucketStart: 900,
@@ -30,7 +30,7 @@ describe('DynamoDB の VoteStore', () => {
     const items = send.mock.calls[0][0].input.TransactItems
     expect(items).toHaveLength(2)
     expect(items[0].Put).toMatchObject({
-      Item: { pk: 'SESSION#AAAAAAAAAAAAAAAAAAAAAA', sk: 'IMPULSE#ikki', version: 1, expiresAt: 2000 },
+      Item: { pk: 'SESSION#AAAAAAAAAAAAAAAAAAAAAA', sk: 'IMPULSE#ikki', packed: `v1.${(1_800_000_000).toString(36)}`, version: 1, expiresAt: 2000 },
       ConditionExpression: 'attribute_not_exists(pk)',
     })
     expect(items[1].Update).toMatchObject({
@@ -81,7 +81,21 @@ describe('DynamoDB の VoteStore', () => {
     })
   })
 
-  test('セッションの記録を衝動ごとに読み、不正な項目は無視する', async () => {
+  test('投票記録は詰めた文字列で保存し、票ごとのリストは書かない', async () => {
+    const send = jest.fn().mockResolvedValue({})
+    await storeWith(send).commitVote(INPUT)
+    const item = send.mock.calls[0][0].input.TransactItems[0].Put.Item
+    expect(typeof item.packed).toBe('string')
+    expect(item.votes).toBeUndefined()
+  })
+
+  test('詰めた文字列の記録を読める', async () => {
+    const send = jest.fn().mockResolvedValue({ Items: [{ sk: 'IMPULSE#ikki', packed: `a1.${(1_800_000_000).toString(36)}`, version: 3 }] })
+    const result = await storeWith(send).getSessionVotes('AAAAAAAAAAAAAAAAAAAAAA')
+    expect(result.ikki).toEqual({ votes: [{ id: 'a1', at: 1_800_000_000_000 }], version: 3 })
+  })
+
+  test('古い形（票ごとのリスト）の記録も読める。不正な項目は無視する', async () => {
     const send = jest.fn().mockResolvedValue({
       Items: [
         { sk: 'IMPULSE#exodus', votes: [{ id: 'e1', at: 10 }, { broken: true }], version: 2 },

@@ -3,7 +3,7 @@ import { createImpulseRecord } from '#shared/domain/impulse'
 import { createRegionRecord } from '#shared/domain/region'
 import { VOTE_LIMIT } from '#shared/domain/vote'
 import type { WorldState } from '#shared/domain/worldState'
-import { STATE_FRESHNESS_MS, useWorld } from '../../../app/composables/useWorld'
+import { createVoteId, STATE_FRESHNESS_MS, useWorld, VOTE_ID_LENGTH } from '../../../app/composables/useWorld'
 import type { Remaining, SubmitResult, WorldSource } from '../../../app/data/worldSource'
 
 const FULL: Remaining = { ikki: VOTE_LIMIT, exodus: VOTE_LIMIT, festival: VOTE_LIMIT }
@@ -49,6 +49,18 @@ function setup(region: () => 'kanto' | null = () => null) {
 
 afterEach(() => {
   vi.useRealTimers()
+})
+
+describe('createVoteId', () => {
+  test('8文字で、サーバーが受け付ける文字だけ', () => {
+    for (let i = 0; i < 200; i++) expect(createVoteId()).toMatch(new RegExp(`^[\\w-]{${VOTE_ID_LENGTH}}$`))
+    expect(VOTE_ID_LENGTH).toBe(8)
+  })
+
+  test('重ならない', () => {
+    const ids = new Set(Array.from({ length: 1000 }, createVoteId))
+    expect(ids.size).toBe(1000)
+  })
 })
 
 describe('useWorld', () => {
