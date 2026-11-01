@@ -1,0 +1,40 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run build)",
+      "Bash(npm run lint *)",
+      "Bash(npm run lint)",
+      "Bash(npm run typecheck)",
+      "Bash(npm test *)",
+      "Bash(npm test)",
+      "Bash(npm run synth *)",
+      "Bash(npm run generate)",
+      "Bash(npm run test:e2e *)",
+      "Bash(npm run test:e2e)",
+      "Bash(npx cdk synth *)",
+      "Bash(npx cdk diff *)",
+      "Bash(npx cdk ls *)",
+      "Bash(git status *)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Read(../impulsive-momentum-indicator/**)"
+    ],
+    "ask": [
+      "Bash(git push *)",
+      "Bash(gh pr merge *)",
+      "Bash(npm install *)",
+      "Bash(npx cdk deploy *)",
+      "Bash(npx cdk destroy *)",
+      "Bash(npx cdk bootstrap *)",
+      "Bash(aws *)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./secrets/**)",
+      "Edit(../impulsive-momentum-indicator/**)",
+      "Write(../impulsive-momentum-indicator/**)",
+      "Bash(npx cdk * ImpulsiveMomentum*)"
+    ]
+  }
+}

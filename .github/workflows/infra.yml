@@ -1,0 +1,102 @@
+# バックエンド（infra/）を検査し、AWS にデプロイする。
+# main への push のうち、バックエンドに影響するファイルが変わったときだけ動く。
+# Lambda は shared/domain を取り込んでいるため、そこが変わったときもデプロイする。
+name: Infra
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - infra/**
+      - shared/domain/**
+      - .github/workflows/infra.yml
+  pull_request:
+    paths:
+      - infra/**
+      - shared/domain/**
+      - .github/workflows/infra.yml
+
+permissions: {}
+
+# デプロイを同時に走らせない
+concurrency:
+  group: infra-deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # 今は dev だけを使う（prod への昇格は未定）
+  STAGE: dev
+  AWS_REGION: ap-northeast-1
+
+defaults:
+  run:
+    working-directory: infra
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: リポジトリを取得
+        uses: actions/checkout@v7
+
+      - name: Node.js をセットアップ
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: infra/package-lock.json
+
+      - name: 依存関係をインストール
+        run: npm ci
+
+      - name: 型チェック
+        run: npm run build
+
+      - name: テスト
+        run: npm test
+
+      # AWS には接続せずにテンプレートを合成し、バンドルできることを確かめる
+      - name: テンプレートを合成
+        run: npx cdk synth -c stage=${{ env.STAGE }} --quiet
+
+  deploy:
+    needs: check
+    # main への push だけ。初回の準備（.claude/rules/infra.md「初回だけ手元で行うこと」）が済み、
+    # デプロイ用ロールの ARN を設定するまではデプロイしない
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.AWS_DEPLOY_ROLE_ARN != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      # OIDC で AWS のロールを引き受けるのに必要
+      id-token: write
+    steps:
+      - name: リポジトリを取得
+        uses: actions/checkout@v7
+
+      - name: Node.js をセットアップ
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: infra/package-lock.json
+
+      - name: 依存関係をインストール
+        run: npm ci
+
+      - name: AWS の認証情報を取得
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # 差分をログに残してからデプロイする
+      - name: 差分を確認
+        run: npx cdk diff "ImpulsiveWorldBackend-${STAGE}" -c stage="${STAGE}"
+
+      - name: デプロイ
+        run: npx cdk deploy "ImpulsiveWorldBackend-${STAGE}" -c stage="${STAGE}" --require-approval never
