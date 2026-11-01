@@ -242,7 +242,7 @@ export function createFestivalMode(stage: Stage): Mode {
   /** レア：「祭」の字の花火 */
   function kanjiFirework(): void {
     const parts = kanjiPoints().map(([tx, ty]) => ({ tx, ty, j: Math.random(), s: sprite(Math.random() < 0.78 ? [255, 211, 107] : (Math.random() < 0.5 ? [255, 111, 168] : [255, 244, 214])) }))
-    stage.addEffect({ t: 0, dur: 5.4, draw(t) {
+    stage.addEffect({ t: 0, dur: 5.4, keep: true, draw(t) {
       const { W, H } = frame
       const tp = proj(stage.origin)
       const cx = tp.vis ? clamp(tp.x, W * 0.3, W * 0.7) : W / 2

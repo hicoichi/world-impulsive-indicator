@@ -265,7 +265,7 @@ export function createIkkiMode(stage: Stage): Mode {
       x.font = '900 92px "Zen Kaku Gothic New","Hiragino Sans","Noto Sans JP",sans-serif'
       x.fillText('一揆', 120, 80)
     })
-    stage.addEffect({ t: 0, dur: 5.6, draw(t) {
+    stage.addEffect({ t: 0, dur: 5.6, keep: true, draw(t) {
       const { W, H, T } = frame
       const tp = proj(stage.origin)
       // スマホでは画面からはみ出さないよう抑える（PC は UI モックの値のまま）

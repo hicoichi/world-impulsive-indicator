@@ -315,7 +315,7 @@ export function createExodusMode(stage: Stage): Mode {
     })
     const trail: Trail[] = []
     let last = 0
-    stage.addEffect({ t: 0, dur: 6.2, draw(t) {
+    stage.addEffect({ t: 0, dur: 6.2, keep: true, draw(t) {
       const { W, H, T } = frame
       const dt = Math.max(0, t - last)
       last = t
@@ -399,7 +399,7 @@ export function createExodusMode(stage: Stage): Mode {
     let last = 0
     const SF = sprite([255, 170, 70])
     const SY = sprite([255, 230, 150])
-    stage.addEffect({ t: 0, dur: 6.6, draw(t) {
+    stage.addEffect({ t: 0, dur: 6.6, keep: true, draw(t) {
       const { W, H, T } = frame
       const dt = Math.max(0, t - last)
       last = t

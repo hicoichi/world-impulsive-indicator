@@ -11,6 +11,7 @@ import type { ImpulseVisual } from '../domain/visualState'
 import { glow as drawGlow, sprite, stars } from './draw'
 import { ANCHORS, geography, ORIGIN, type Anchor, type LandParticle } from './geo'
 import { clamp, D2R, easeOut, rnd, TAU, type RGB, type Vec3 } from './math'
+import { createScheduler, trimEffects } from './scheduler'
 import { createExodusMode } from './modes/exodus'
 import { createFestivalMode } from './modes/festival'
 import { createIkkiMode } from './modes/ikki'
@@ -31,6 +32,8 @@ export interface Effect {
   zoom?: number
   /** 一揆：群衆が一斉に腕を上げる */
   surge?: boolean
+  /** レアの演出の主役（巨大な旗・「祭」の花火など）。上限を超えて間引くとき、最後まで残す */
+  keep?: boolean
   draw(t: number): void
 }
 
@@ -122,7 +125,7 @@ const ACCENTS: Record<ImpulseKey, [RGB, RGB]> = {
   festival: [[255, 197, 61], [255, 120, 170]],
 }
 
-/** 同時に動かす演出の上限。連打しても重くならないよう、古いものから間引く */
+/** 同時に描く演出の上限。連打しても重くならないよう、古いものから間引く。「◯秒後に実行」の予約は数えない（scheduler.ts） */
 const MAX_EFFECTS = 28
 
 /** 熱・にぎわいが目標へ近づく速さ（1秒あたり） */
@@ -182,6 +185,7 @@ export function createEngine(options: EngineOptions): Engine {
   let DPR = 1
   const cam = { lon0: 0, lat0: 0, phi: 0.58, F: 0.75, R: 1, cx: 0, cy: 0, cl: 1, sl: 0, ct: 1, st: 0, zoom: 1 }
   const effects: Effect[] = []
+  const scheduler = createScheduler()
   const motes: { c: AnchorState, ox: number, oy: number, t: number, life: number, vy: number }[] = []
   let rare: { mod: RareMod, t0: number } | null = null
   let originProjected: Projected | null = null
@@ -210,7 +214,7 @@ export function createEngine(options: EngineOptions): Engine {
 
   function addEffect(e: Effect): void {
     effects.push(e)
-    if (effects.length > MAX_EFFECTS) effects.splice(0, effects.length - MAX_EFFECTS)
+    trimEffects(effects, MAX_EFFECTS)
   }
 
   const stage: Stage = {
@@ -230,13 +234,7 @@ export function createEngine(options: EngineOptions): Engine {
     activity: () => activity,
     addEffect,
     later(delay, fn) {
-      let fired = false
-      addEffect({ t: 0, dur: delay + 0.3, draw(t) {
-        if (!fired && t >= delay) {
-          fired = true
-          fn()
-        }
-      } })
+      scheduler.schedule(frame.T, delay, fn)
     },
     setRare(mod) {
       rare = { mod, t0: frame.T }
@@ -487,6 +485,7 @@ export function createEngine(options: EngineOptions): Engine {
   }
 
   function drawEffects(): void {
+    scheduler.run(frame.T)
     for (let k = effects.length - 1; k >= 0; k--) {
       const e = effects[k]
       if (!e) continue
