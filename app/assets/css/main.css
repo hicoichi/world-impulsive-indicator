@@ -1,0 +1,20 @@
+/* 色と書体は UI モックの値（docs/frontend-plan.md §1） */
+:root {
+  --color-space: #01030a;
+  --color-text: #f4f1ea;
+  --font-latin: 'Chakra Petch', sans-serif;
+  --font-display: 'Dela Gothic One', sans-serif;
+  --font-body: 'Zen Kaku Gothic New', system-ui, sans-serif;
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--color-space);
+  color: var(--color-text);
+  font-family: var(--font-body);
+}
+
+button {
+  -webkit-tap-highlight-color: transparent;
+}

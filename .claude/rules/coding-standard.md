@@ -32,6 +32,7 @@
 
 - `server/` は作らない。バックエンドは `infra/`（`.claude/rules/infra.md`）。
 - 上限・ウィンドウ・寄与度・地域の定義を `app/` に書き直さない。`shared/domain/` を import する。
+- 画面側（`app/`、`tests/unit/`）からは別名 `#shared/domain/…` で import する。相対パスだと Nuxt のサーバー側のビルド（静的生成）が解決できない。Vitest にも同じ別名を設定している。Lambda（`infra/`）は相対パスのまま。
 
 ## 投票・集計のロジック
 

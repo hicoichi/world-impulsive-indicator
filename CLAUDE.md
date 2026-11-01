@@ -14,7 +14,7 @@
 | 対象 | 状態 |
 |---|---|
 | バックエンド（`infra/`、`shared/domain/`） | **実装済み・未デプロイ**（2026-11-01）。デプロイは初回の準備（`.claude/rules/infra.md`）とユーザーの承認の後 |
-| フロントエンド（ルートの Nuxt、`app/`） | **実装しない。** UI モックは `mock/` に配置済み（2026-11-01）。実装計画 `docs/frontend-plan.md` の承認を待っている。承認までプロジェクトの作成（`nuxi init`、ルートの `package.json`）も行わない |
+| フロントエンド（ルートの Nuxt、`app/`） | **実装中**。計画 `docs/frontend-plan.md`（承認済み）の段階 F1〜F6 を順に進め、各段階の終わりにユーザーの確認を得てから次へ進む。UI モックは `mock/` |
 
 - フロントエンドに着手するときは、USM §6 の指示どおり「姉妹アプリの実装・UI モックと本 USM の差分」と「改修計画」を提示し、承認を得てから大規模な実装を始める。
 - 新しく実装する前に、対象ストーリーに関わる USM §9 の未確定事項が確定しているか確認する。
@@ -33,7 +33,7 @@
 
 **`cdk deploy`／`cdk destroy`／`cdk bootstrap` など AWS のリソースを変更する操作は、実行のたびにユーザーの承認を得る。**
 
-フロントエンド（予定。プロジェクト作成後に更新する）：`npm run dev`（ポート 3000）、`npm run lint`、`npm run typecheck`、`npm test`、`npm run generate`、`npm run test:e2e`。
+フロントエンド（ルートで実行）：`npm run dev`（ポート 3000）、`npm run lint`（`infra/`・`shared/` も対象）、`npm run typecheck`、`npm test`（Vitest）、`npm run generate`、`npm run test:e2e`（Playwright。先に `npm run generate`）。
 
 ## プロダクトのコンセプト
 

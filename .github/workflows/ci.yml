@@ -1,0 +1,71 @@
+# 画面（ルートの Nuxt）を検査する。main への push と PR で動く。
+# 手元の WSL では E2E 用ブラウザのシステムライブラリが入っていないため、E2E はここで確かめる。
+# 公開（GitHub Pages）は段階 F6 で別に追加する（docs/frontend-plan.md）。
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - 'docs/**'
+      - 'mock/**'
+      - '**/*.md'
+  pull_request:
+    paths-ignore:
+      - 'docs/**'
+      - 'mock/**'
+      - '**/*.md'
+
+permissions: {}
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: リポジトリを取得
+        uses: actions/checkout@v7
+
+      - name: Node.js をセットアップ
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: 依存関係をインストール
+        run: npm ci
+
+      # infra/・shared/ も対象にする
+      - name: Lint
+        run: npm run lint
+
+      - name: 型チェック
+        run: npm run typecheck
+
+      - name: 単体テスト
+        run: npm test
+
+      - name: 静的サイトを生成
+        run: npm run generate
+
+      # 生成した成果物そのものを、スマホと PC のビューポートで確かめる
+      - name: E2E 用のブラウザをインストール
+        run: npx playwright install --with-deps chromium
+
+      - name: E2E テスト
+        run: npm run test:e2e
+
+      - name: 失敗時の記録を残す
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: playwright-results
+          path: test-results/
+          retention-days: 7
