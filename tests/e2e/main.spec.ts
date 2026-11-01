@@ -120,7 +120,8 @@ test.describe('投票', () => {
     for (let i = 0; i < 10; i++) await button.click()
     await expect(button).toHaveAttribute('aria-disabled', 'true')
     await expect(activePanel(page).locator('.limit')).toHaveText('しばらくしてから、また')
-    await button.click()
+    // aria-disabled のボタンは Playwright が押せるまで待つため、強制的に押す
+    await button.click({ force: true })
     await expect.poll(() => count(page)).toBe(before + 10)
   })
 
