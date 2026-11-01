@@ -104,6 +104,16 @@ test.describe('スマホ', () => {
 })
 
 test.describe('投票', () => {
+  /**
+   * 何度も押す。1回ずつ Playwright で押すと100回で時間切れになるため、まとめて押す
+   * （押した結果の判定・送信・演出はアプリそのものが行う）
+   */
+  async function pressMany(page: Page, name: string, times: number): Promise<void> {
+    await activePanel(page).getByRole('button', { name }).evaluate((el, n) => {
+      for (let i = 0; i < n; i++) (el as HTMLButtonElement).click()
+    }, times)
+  }
+
   async function count(page: Page): Promise<number> {
     const text = await activePanel(page).locator('.count').textContent()
     return Number((text ?? '').replace(/,/g, ''))
@@ -120,7 +130,7 @@ test.describe('投票', () => {
     const button = activePanel(page).getByRole('button', { name: '一揆したい に投票する' })
     await expect(activePanel(page).locator('.count')).not.toHaveText('—')
     const before = await count(page)
-    for (let i = 0; i < VOTE_LIMIT; i++) await button.click()
+    await pressMany(page, '一揆したい に投票する', VOTE_LIMIT)
     await expect(button).toHaveAttribute('aria-disabled', 'true')
     await expect(activePanel(page).locator('.limit')).toHaveText('しばらくしてから、また')
     // aria-disabled のボタンは Playwright が押せるまで待つため、強制的に押す
@@ -129,8 +139,8 @@ test.describe('投票', () => {
   })
 
   test('上限は衝動ごとに独立している', async ({ page }) => {
-    const button = activePanel(page).getByRole('button', { name: '一揆したい に投票する' })
-    for (let i = 0; i < VOTE_LIMIT; i++) await button.click()
+    await pressMany(page, '一揆したい に投票する', VOTE_LIMIT)
+    await expect(activePanel(page).getByRole('button', { name: '一揆したい に投票する' })).toHaveAttribute('aria-disabled', 'true')
     await page.getByRole('button', { name: '国外脱出したい へ移動' }).click()
     await expectActive(page, '国外脱出したい')
     await expect(activePanel(page).getByRole('button', { name: '国外脱出したい に投票する' })).not.toHaveAttribute('aria-disabled', 'true')
