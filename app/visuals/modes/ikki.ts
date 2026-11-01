@@ -2,6 +2,7 @@
 
 import { flag, maskPoints, person, placard, PLACARD_TEXTS, sprite } from '../draw'
 import { MARCH_PATHS } from '../geo'
+import { FLAG_ASPECT, giantFlagLayout } from '../layout'
 import { angleBetween, clamp, easeBack, easeOut, pick, seeded, slerpV, TAU, type Vec3 } from '../math'
 import type { AnchorState, Mode, Stage } from '../stage'
 import { hasVotes, shock } from './common'
@@ -267,11 +268,11 @@ export function createIkkiMode(stage: Stage): Mode {
     stage.addEffect({ t: 0, dur: 5.6, draw(t) {
       const { W, H, T } = frame
       const tp = proj(stage.origin)
-      const bx = tp.vis ? clamp(tp.x, W * 0.22, W * 0.55) : W * 0.4
-      const by = tp.vis ? tp.y : H * 0.6
-      const poleH = Math.min(H * 0.62, W * 1.1) * easeOut(clamp((t - 0.2) / 1.2, 0, 1))
-      const fw = Math.min(W * 0.62, H * 0.5)
-      const fh = fw * 0.62
+      // スマホでは画面からはみ出さないよう抑える（PC は UI モックの値のまま）
+      const layout = giantFlagLayout(W, H, tp.vis ? tp : null)
+      const { bx, by, fw } = layout
+      const poleH = layout.poleH * easeOut(clamp((t - 0.2) / 1.2, 0, 1))
+      const fh = fw * FLAG_ASPECT
       const out = t > 4.6 ? Math.max(0, (5.6 - t) / 1.0) : 1
       ctx.globalCompositeOperation = 'lighter'
       ctx.globalAlpha = 0.9 * out
