@@ -40,13 +40,14 @@ export function createMockWorldSource(): WorldSource {
     async fetchRemaining() {
       return remaining()
     },
-    async submitVote(impulse, voteId) {
+    async submitVote(impulse, voteId, region) {
       if (mine[impulse].has(voteId)) return { status: 'duplicate', remaining: remaining() }
       if (mine[impulse].size >= VOTE_LIMIT) return { status: 'limit', remaining: remaining() }
       mine[impulse].add(voteId)
       const s = state[impulse]
       const units = contributionOf(mine[impulse].size)
-      state[impulse] = { votes: s.votes + 1, momentum: s.momentum + units, regions: { ...s.regions, unknown: s.regions.unknown + units } }
+      const bucket = region ?? 'unknown'
+      state[impulse] = { votes: s.votes + 1, momentum: s.momentum + units, regions: { ...s.regions, [bucket]: s.regions[bucket] + units } }
       return { status: 'accepted', remaining: remaining() }
     },
   }

@@ -77,7 +77,7 @@ describe('World API のクライアント', () => {
       if (url.endsWith('/v1/sessions')) return json(201, { token: 't1', remaining: FULL })
       return json(200, { result: 'accepted', token: 't2', remaining: { ...FULL, festival: 9 } })
     })
-    expect(await source.submitVote('festival', 'v1')).toEqual({ status: 'accepted', remaining: { ...FULL, festival: 9 } })
+    expect(await source.submitVote('festival', 'v1', null)).toEqual({ status: 'accepted', remaining: { ...FULL, festival: 9 } })
     expect(calls.map(c => c.url)).toEqual(['https://api.example.test/v1/sessions', 'https://api.example.test/v1/votes'])
     expect(JSON.parse(String(calls[1]?.init?.body))).toEqual({ impulse: 'festival', voteId: 'v1' })
     expect(storage.value).toBe('t2')
@@ -85,12 +85,12 @@ describe('World API のクライアント', () => {
 
   test('上限なら limit', async () => {
     const { source } = setup(() => json(409, { error: 'limit', token: 't', remaining: { ...FULL, ikki: 0 } }), 't')
-    expect(await source.submitVote('ikki', 'v1')).toEqual({ status: 'limit', remaining: { ...FULL, ikki: 0 } })
+    expect(await source.submitVote('ikki', 'v1', null)).toEqual({ status: 'limit', remaining: { ...FULL, ikki: 0 } })
   })
 
   test('再送は duplicate', async () => {
     const { source } = setup(() => json(200, { result: 'duplicate', token: 't', remaining: FULL }), 't')
-    expect((await source.submitVote('ikki', 'v1')).status).toBe('duplicate')
+    expect((await source.submitVote('ikki', 'v1', null)).status).toBe('duplicate')
   })
 
   test('トークンが無効なら取り直して1回だけ送り直す', async () => {
@@ -100,13 +100,19 @@ describe('World API のクライアント', () => {
       votes++
       return votes === 1 ? json(401, { error: 'invalid_session' }) : json(200, { result: 'accepted', token: 'fresh2', remaining: FULL })
     }, 'expired')
-    expect((await source.submitVote('ikki', 'v1')).status).toBe('accepted')
+    expect((await source.submitVote('ikki', 'v1', null)).status).toBe('accepted')
     expect(votes).toBe(2)
     expect(storage.value).toBe('fresh2')
   })
 
   test('サーバーエラーは例外', async () => {
     const { source } = setup(() => json(500, { error: 'internal_error' }), 't')
-    await expect(source.submitVote('ikki', 'v1')).rejects.toThrow()
+    await expect(source.submitVote('ikki', 'v1', null)).rejects.toThrow()
+  })
+
+  test('地方を使うときは地方のコードだけを付けて送る', async () => {
+    const { source, calls } = setup(() => json(200, { result: 'accepted', token: 't', remaining: FULL }), 't')
+    await source.submitVote('exodus', 'v1', 'kyushu')
+    expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({ impulse: 'exodus', voteId: 'v1', region: 'kyushu' })
   })
 })

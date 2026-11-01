@@ -8,7 +8,7 @@ import { IDLE_VISUAL } from '../../../app/domain/visualState'
 
 // happy-dom には Canvas 2D がないため、描画エンジンは作らない
 vi.mock('../../../app/visuals/stage', () => ({
-  createEngine: () => ({ setVisual: vi.fn(), play: vi.fn(), setReducedMotion: vi.fn(), destroy: vi.fn() }),
+  createEngine: () => ({ setVisual: vi.fn(), setOrigin: vi.fn(), play: vi.fn(), setReducedMotion: vi.fn(), destroy: vi.fn() }),
 }))
 
 function view(partial: Partial<ImpulseView> = {}): ImpulseView {

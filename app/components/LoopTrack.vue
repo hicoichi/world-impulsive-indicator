@@ -4,12 +4,16 @@
 import { inject, ref } from 'vue'
 import { IMPULSE_KEYS, IMPULSE_LABELS } from '#shared/domain/impulse'
 import { useLoopTrack } from '../composables/useLoopTrack'
+import { REGION_KEY } from '../composables/useRegion'
 import { WORLD_KEY } from '../composables/useWorld'
 import { loopPanels } from '../domain/loop'
 import ImpulseScene from './ImpulseScene.vue'
+import RegionPill from './RegionPill.vue'
 
 const world = inject(WORLD_KEY)
 if (!world) throw new Error('useWorld が provide されていない')
+const region = inject(REGION_KEY)
+if (!region) throw new Error('useRegion が provide されていない')
 
 const track = ref<HTMLElement | null>(null)
 const panels = loopPanels(IMPULSE_KEYS)
@@ -44,33 +48,18 @@ const { current, go, goTo, onScroll, onWheel, onKeydown } = useLoopTrack(track, 
           :impulse="panel.item"
           :view="world.views[panel.item].value"
           :clone="panel.clone"
+          :origin-region="region.region.value"
           :vote="() => world.vote(panel.item)"
         />
       </div>
     </div>
 
     <header class="head">
-      <div class="region">
-        <svg
-          width="14"
-          height="14"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          aria-hidden="true"
-        >
-          <path d="M12 21s-6.5-6.2-6.5-11a6.5 6.5 0 0 1 13 0c0 4.8-6.5 11-6.5 11z" />
-          <circle
-            cx="12"
-            cy="10"
-            r="2.3"
-          />
-        </svg>
-        <span>JAPAN</span>
-      </div>
+      <RegionPill
+        :region="region.region.value"
+        :status="region.status.value"
+        @toggle="region.toggle()"
+      />
     </header>
 
     <button
@@ -183,22 +172,6 @@ const { current, go, goTo, onScroll, onWheel, onKeydown } = useLoopTrack(track, 
   box-sizing: border-box;
   z-index: 8;
   pointer-events: none;
-}
-
-.region {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  height: 28px;
-  padding: 0 11px 0 8px;
-  border-radius: 14px;
-  border: 1px solid rgba(244, 241, 234, 0.28);
-  background: rgba(1, 3, 10, 0.45);
-  font-family: var(--font-latin);
-  font-weight: 600;
-  font-size: 11px;
-  letter-spacing: 0.18em;
-  color: var(--color-text);
 }
 
 .dots {

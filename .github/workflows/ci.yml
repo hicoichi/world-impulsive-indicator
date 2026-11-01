@@ -11,12 +11,10 @@ on:
       - main
     paths-ignore:
       - 'docs/**'
-      - 'mock/**'
       - '**/*.md'
   pull_request:
     paths-ignore:
       - 'docs/**'
-      - 'mock/**'
       - '**/*.md'
 
 permissions: {}

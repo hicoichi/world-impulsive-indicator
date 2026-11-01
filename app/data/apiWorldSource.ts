@@ -96,11 +96,13 @@ export function createApiWorldSource(options: ApiWorldSourceOptions): WorldSourc
     return body.token
   }
 
-  function postVote(token: string, impulse: string, voteId: string): Promise<Response> {
+  function postVote(token: string, impulse: string, voteId: string, region: string | null): Promise<Response> {
+    // 地方は使うときだけ付ける。緯度経度は送らない（docs/world-api-design.md Q-06b）
+    const body = region ? { impulse, voteId, region } : { impulse, voteId }
     return doFetch(`${baseUrl}/v1/votes`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', [SESSION_TOKEN_HEADER]: token },
-      body: JSON.stringify({ impulse, voteId }),
+      body: JSON.stringify(body),
     })
   }
 
@@ -128,14 +130,14 @@ export function createApiWorldSource(options: ApiWorldSourceOptions): WorldSourc
       return toRemaining(body.remaining)
     },
 
-    async submitVote(impulse, voteId): Promise<SubmitResult> {
+    async submitVote(impulse, voteId, region): Promise<SubmitResult> {
       let token = storage.get() ?? await createSession()
-      let response = await postVote(token, impulse, voteId)
+      let response = await postVote(token, impulse, voteId, region)
       if (response.status === 401) {
         // 期限切れ・鍵の入れ替えなどで無効になったトークンは取り直して1回だけ送り直す
         storage.clear()
         token = await createSession()
-        response = await postVote(token, impulse, voteId)
+        response = await postVote(token, impulse, voteId, region)
       }
       const body = await readJson(response)
       applyToken(body.token)

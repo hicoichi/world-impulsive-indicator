@@ -1,4 +1,4 @@
-// 衝動ごとの見た目（色・見出し）。値は UI モック（mock/…/JpScene.dc.html）のもの。
+// 衝動ごとの見た目（色・見出し）。値は UI モック（JpScene）のもの。
 // 種類と順序は shared/domain/impulse.ts を正とし、ここでは見た目だけを持つ
 
 import type { ImpulseKey } from '#shared/domain/impulse'

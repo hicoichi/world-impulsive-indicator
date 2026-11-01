@@ -49,3 +49,21 @@ test('API の集計数を表示し、投票を送る（地域は送らない）'
   // セッショントークンは姉妹アプリと別のキーで保存する
   expect(await page.evaluate(() => localStorage.getItem('world-impulsive-indicator:session-token'))).toBe('token-1')
 })
+
+test.describe('位置情報を使う場合', () => {
+  test.use({ geolocation: { latitude: 33.59, longitude: 130.4 }, permissions: ['geolocation'] })
+
+  test('地方のコードだけを付けて投票を送る（緯度経度は送らない）', async ({ page }) => {
+    const votes = await stubApi(page)
+    await page.goto('./')
+    await page.getByRole('button', { name: '現在地の地方を反映する' }).click()
+    await expect(page.getByRole('button', { name: '現在地の地方を反映する' })).toHaveText('JAPAN · KYUSHU')
+    const panel = page.locator('.panel:not([data-clone])[aria-hidden="false"]')
+    await panel.getByRole('button', { name: '一揆したい に投票する' }).click()
+    await expect.poll(() => votes.length).toBe(1)
+    const body = (votes[0] as { body: Record<string, unknown> }).body
+    expect(body).toMatchObject({ impulse: 'ikki', region: 'kyushu' })
+    expect(Object.keys(body).sort()).toEqual(['impulse', 'region', 'voteId'])
+    expect(JSON.stringify(body)).not.toMatch(/33\.5|130\.4/)
+  })
+})

@@ -3,6 +3,7 @@
 // 配置・寸法・投票時の手応え（ポップ・フラッシュ・揺れ・振動）は UI モック（JpScene）の値
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { IMPULSE_LABELS, type ImpulseKey } from '#shared/domain/impulse'
+import type { RegionKey } from '#shared/domain/region'
 import type { ImpulseView } from '../composables/useWorld'
 import { useReducedMotion } from '../composables/useReducedMotion'
 import type { EffectChoice } from '../domain/effectLottery'
@@ -15,6 +16,8 @@ const props = defineProps<{
   view: ImpulseView
   /** ループの端の複製。初回の演出をせず、操作も受けない */
   clone?: boolean
+  /** 演出の起点にする現在地の地方。位置情報を使わないときは null */
+  originRegion?: RegionKey | null
   /** 投票する。受け付けたら演出の抽選結果、上限なら null */
   vote: () => EffectChoice | null
 }>()
@@ -78,6 +81,7 @@ onMounted(() => {
       reducedMotion: reducedMotion.value,
     })
     engine.setVisual(props.view.visual)
+    engine.setOrigin(props.originRegion ?? null)
   }
   catch (error) {
     // 描画できなくても、数字と投票は使えるようにする
@@ -86,6 +90,7 @@ onMounted(() => {
 })
 
 watch(() => props.view.visual, visual => engine?.setVisual(visual))
+watch(() => props.originRegion, region => engine?.setOrigin(region ?? null))
 watch(reducedMotion, value => engine?.setReducedMotion(value))
 onBeforeUnmount(() => engine?.destroy())
 </script>

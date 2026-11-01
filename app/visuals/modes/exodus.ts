@@ -190,8 +190,12 @@ export function createExodusMode(stage: Stage): Mode {
     stage.addEffect({ t: 0, dur, zoom, draw() {} })
   }
 
+  /** 起点に最も近い空港（位置情報を使わないときは成田） */
   function origin(): Vec3 {
-    return APV[0] ?? stage.origin
+    if (!stage.originRegion) return APV[0] ?? stage.origin
+    let best = APV[0] ?? stage.origin
+    for (const v of APV) if (angleBetween(v, stage.origin) < angleBetween(best, stage.origin)) best = v
+    return best
   }
 
   /** 成田から大きな1機が離陸する */

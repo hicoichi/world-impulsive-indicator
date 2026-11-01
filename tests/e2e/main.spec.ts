@@ -160,3 +160,48 @@ test.describe('地球の描画', () => {
     expect(errors.filter(e => !e.includes('fonts.g'))).toEqual([])
   })
 })
+
+test.describe('位置情報（許可した場合）', () => {
+  test.use({ geolocation: { latitude: 34.7, longitude: 135.5 }, permissions: ['geolocation'] })
+
+  test('ピルを押すと地方を反映し、再読み込み後も覚えている。もう一度押すとやめる', async ({ page }) => {
+    const pill = page.getByRole('button', { name: '現在地の地方を反映する' })
+    await expect(pill).toHaveText('JAPAN')
+    await expect(pill).toHaveAttribute('aria-pressed', 'false')
+    await pill.click()
+    await expect(pill).toHaveText('JAPAN · KINKI')
+    await expect(pill).toHaveAttribute('aria-pressed', 'true')
+    // 保存するのは地方のコードだけ
+    expect(await page.evaluate(() => localStorage.getItem('world-impulsive-indicator:region'))).toBe('kinki')
+    await page.reload()
+    await expect(pill).toHaveText('JAPAN · KINKI')
+    await pill.click()
+    await expect(pill).toHaveText('JAPAN')
+    expect(await page.evaluate(() => localStorage.getItem('world-impulsive-indicator:region'))).toBeNull()
+  })
+
+  test('地方を反映したまま投票でき、演出でエラーにならない', async ({ page }) => {
+    const errors: string[] = []
+    page.on('pageerror', e => errors.push(e.message))
+    await page.getByRole('button', { name: '現在地の地方を反映する' }).click()
+    await expect(page.getByRole('button', { name: '現在地の地方を反映する' })).toHaveText('JAPAN · KINKI')
+    for (const name of NAMES) {
+      await page.getByRole('button', { name: `${name} へ移動` }).click()
+      await expectActive(page, name)
+      const button = activePanel(page).getByRole('button', { name: `${name} に投票する` })
+      for (let i = 0; i < 5; i++) await button.click()
+    }
+    await page.waitForTimeout(1000)
+    expect(errors).toEqual([])
+  })
+})
+
+test.describe('位置情報（許可しない場合）', () => {
+  test('押しても地方なしのままで、投票はできる', async ({ page }) => {
+    const pill = page.getByRole('button', { name: '現在地の地方を反映する' })
+    await pill.click()
+    await expect(pill).toHaveText('JAPAN')
+    await expect(pill).toHaveAttribute('aria-pressed', 'false')
+    await expect(activePanel(page).getByRole('button', { name: '一揆したい に投票する' })).toBeEnabled()
+  })
+})

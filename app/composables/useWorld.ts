@@ -6,6 +6,7 @@
 
 import { computed, reactive, type ComputedRef, type InjectionKey } from 'vue'
 import { createImpulseRecord, IMPULSE_KEYS, type ImpulseKey } from '#shared/domain/impulse'
+import type { RegionKey } from '#shared/domain/region'
 import { VOTE_LIMIT } from '#shared/domain/vote'
 import type { WorldState } from '#shared/domain/worldState'
 import { createEffectLottery, type EffectChoice } from '../domain/effectLottery'
@@ -47,6 +48,8 @@ export interface WorldOptions {
   random?: () => number
   createId?: () => string
   sleep?: (ms: number) => Promise<void>
+  /** 現在地の地方（位置情報を使わないときは null） */
+  region?: () => RegionKey | null
 }
 
 function defaultId(): string {
@@ -116,10 +119,10 @@ export function useWorld(options: WorldOptions) {
     }
   }
 
-  async function submit(key: ImpulseKey, id: string): Promise<void> {
+  async function submit(key: ImpulseKey, id: string, region: RegionKey | null): Promise<void> {
     for (let attempt = 0; ; attempt++) {
       try {
-        const result = await source.submitVote(key, id)
+        const result = await source.submitVote(key, id, region)
         if (result.status === 'limit') {
           removePending(key, id)
         }
@@ -150,9 +153,11 @@ export function useWorld(options: WorldOptions) {
   function vote(key: ImpulseKey): EffectChoice | null {
     if (data.remaining[key] <= 0) return null
     const id = createId()
+    // 押した時点の地方で送る（送り直しでも変えない）
+    const region = options.region?.() ?? null
     data.remaining[key] -= 1
     data.pending[key].push({ id, acceptedAt: null })
-    queues[key] = queues[key].then(() => submit(key, id))
+    queues[key] = queues[key].then(() => submit(key, id, region))
     return lotteries[key].draw()
   }
 

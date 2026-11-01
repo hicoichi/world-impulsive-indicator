@@ -177,7 +177,9 @@ export function createIkkiMode(stage: Stage): Mode {
 
   /** 各地から起点へ行進する */
   function march(): void {
-    const cols = stage.anchors.filter(c => c.region !== 'kanto').map((c) => {
+    // 起点の地方からは行進しない（位置情報を使わないときの起点は東京＝関東）
+    const from = stage.originRegion ?? 'kanto'
+    const cols = stage.anchors.filter(c => c.region !== from).map((c) => {
       const om = angleBetween(c.vec, stage.origin)
       return { a: c.vec, om, so: Math.sin(om), ms: Array.from({ length: 12 }, (_, j) => ({ d: j * 0.035, off: (Math.random() - 0.5) * 8, ph: Math.random() * TAU, fl: Math.random() < 0.45 })) }
     })

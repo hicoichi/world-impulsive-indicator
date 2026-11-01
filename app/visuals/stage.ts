@@ -83,8 +83,10 @@ export interface Stage {
   setRare(mod: RareMod): void
   /** 人・提灯などの大きさの倍率 */
   f0(): number
-  /** 投票の演出の起点 */
+  /** 投票の演出の起点（現在地の地方の代表都市。位置情報を使わないときは東京） */
   origin: Vec3
+  /** 起点の地方。位置情報を使わないときは null */
+  originRegion: RegionKey | null
 }
 
 export interface Mode {
@@ -107,6 +109,8 @@ export interface EngineOptions {
 
 export interface Engine {
   setVisual(visual: ImpulseVisual): void
+  /** 演出の起点を現在地の地方にする。null なら東京（docs/frontend-plan.md §2.2） */
+  setOrigin(region: RegionKey | null): void
   play(choice: EffectChoice): void
   setReducedMotion(value: boolean): void
   destroy(): void
@@ -239,6 +243,7 @@ export function createEngine(options: EngineOptions): Engine {
     },
     f0: () => Math.max(0.7, frame.S * 1.5),
     origin: ORIGIN,
+    originRegion: null,
   }
 
   const mode: Mode = impulse === 'ikki' ? createIkkiMode(stage) : impulse === 'exodus' ? createExodusMode(stage) : createFestivalMode(stage)
@@ -246,7 +251,7 @@ export function createEngine(options: EngineOptions): Engine {
   /** 投票のたびに起点に出る波紋 */
   function ping(): void {
     addEffect({ t: 0, dur: 1.4, draw(t) {
-      const p = proj(ORIGIN)
+      const p = proj(stage.origin)
       if (!p.vis) return
       const k = t / 1.4
       const f0 = stage.f0()
@@ -388,7 +393,7 @@ export function createEngine(options: EngineOptions): Engine {
   function drawLand(): void {
     const { W, H, T, S } = frame
     const asm = intro ? easeOut(clamp(T / 2.4, 0, 1)) : 1
-    originProjected = proj(ORIGIN)
+    originProjected = proj(stage.origin)
     const rareT = rare ? T - rare.t0 : 0
     if (rare && rareT > rare.mod.dur) rare = null
     geo.land.forEach((q, i) => {
@@ -544,6 +549,10 @@ export function createEngine(options: EngineOptions): Engine {
       activityTarget = visual.activity
       for (const a of anchors) a.target = visual.heat[a.region]
       labeled = visual.labeled
+    },
+    setOrigin(region) {
+      stage.originRegion = region
+      stage.origin = region ? stage.anchorOf(region).vec : ORIGIN
     },
     play(choice) {
       ping()
