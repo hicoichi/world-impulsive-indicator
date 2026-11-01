@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>日本モード — 横スクロール</title>
+<script src="./vendor/react.js"></script>
+<script src="./vendor/react-dom.js"></script>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&amp;family=Dela+Gothic+One&amp;family=Zen+Kaku+Gothic+New:wght@500;700;900&amp;display=swap">
+<style>
+body{margin:0;background:#01030a}
+a{color:#9fd2ff}a:hover{color:#d6ecff}
+.js-root{position:relative;width:100%;overflow:hidden;background:#01030a;color:#F4F1EA;font-family:'Zen Kaku Gothic New',system-ui,sans-serif;outline:none;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+.js-track{position:absolute;left:0;top:0;width:100%;height:100%;display:flex;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;scrollbar-width:none;overscroll-behavior-x:contain;scroll-behavior:auto}
+.js-track::-webkit-scrollbar{display:none}
+.js-panel{position:relative;flex:0 0 100%;width:100%;height:100%;scroll-snap-align:center;scroll-snap-stop:always;overflow:hidden}
+.js-head{position:absolute;top:0;left:0;right:0;height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;box-sizing:border-box;z-index:8;pointer-events:none}
+.js-wide .js-head{height:64px;padding:0 28px}
+.js-brand{display:flex;align-items:center;gap:10px;font-family:'Chakra Petch',sans-serif;font-weight:600;font-size:10.5px;letter-spacing:.2em;color:rgba(244,241,234,.8);white-space:nowrap}
+.js-wide .js-brand{font-size:12px}
+.js-region{display:flex;align-items:center;gap:6px;height:28px;padding:0 11px 0 8px;border-radius:14px;border:1px solid rgba(244,241,234,.28);background:rgba(1,3,10,.45);font-family:'Chakra Petch',sans-serif;font-weight:600;font-size:11px;letter-spacing:.18em;color:#F4F1EA}
+.js-dots{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);display:flex;gap:2px;z-index:8}
+.js-dot{width:30px;height:30px;padding:0;border:none;background:transparent;display:flex;align-items:center;justify-content:center;cursor:pointer}
+.js-dot span{display:block;width:6px;height:6px;border-radius:3px;background:rgba(244,241,234,.32);transition:width .3s ease,background .3s ease}
+.js-dot.on span{width:20px;background:rgba(244,241,234,.9)}
+.js-arrow{position:absolute;top:50%;width:48px;height:48px;margin-top:-24px;border-radius:24px;border:1px solid rgba(244,241,234,.2);background:rgba(1,3,10,.35);color:#F4F1EA;display:none;align-items:center;justify-content:center;cursor:pointer;z-index:8;transition:background .2s ease}
+.js-arrow:hover{background:rgba(244,241,234,.12)}
+.js-wide .js-arrow{display:flex}
+.js-prev{left:22px}
+.js-next{right:22px}
+</style>
+</helmet>
+<div class="{{rootClass}}" style="height: {{rootH}}" ref="{{setRoot}}" tabIndex="0" onKeyDown="{{onKey}}">
+<div class="js-track" onScroll="{{onScroll}}" onWheel="{{onWheel}}">
+<div class="js-panel"><dc-import name="JpScene" mode="matsuri" bare="1" clone="1" frame-h="{{fh}}" hint-size="100%,100%"></dc-import></div>
+<div class="js-panel"><dc-import name="JpScene" mode="ikki" bare="1" frame-h="{{fh}}" hint-size="100%,100%"></dc-import></div>
+<div class="js-panel"><dc-import name="JpScene" mode="exodus" bare="1" frame-h="{{fh}}" hint-size="100%,100%"></dc-import></div>
+<div class="js-panel"><dc-import name="JpScene" mode="matsuri" bare="1" frame-h="{{fh}}" hint-size="100%,100%"></dc-import></div>
+<div class="js-panel"><dc-import name="JpScene" mode="ikki" bare="1" clone="1" frame-h="{{fh}}" hint-size="100%,100%"></dc-import></div>
+</div>
+<header class="js-head">
+<div class="js-brand">
+<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"></circle><path d="M3.5 12h3.2l2-4.2 3.1 8.6 2.4-6.1 1.5 1.7h4.8"></path></svg>
+<span>IMPULSIVE MOMENTUM INDICATOR</span>
+</div>
+<div class="js-region">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6.5-6.2-6.5-11a6.5 6.5 0 0 1 13 0c0 4.8-6.5 11-6.5 11z"></path><circle cx="12" cy="10" r="2.3"></circle></svg>
+<span>JAPAN</span>
+</div>
+</header>
+<button type="button" class="js-arrow js-prev" onClick="{{prev}}" aria-label="前の衝動へ">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"></path></svg>
+</button>
+<button type="button" class="js-arrow js-next" onClick="{{next}}" aria-label="次の衝動へ">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5l7 7-7 7"></path></svg>
+</button>
+<div class="js-dots">
+<sc-for list="{{dots}}" as="d" hint-placeholder-count="3">
+<button type="button" class="{{d.cls}}" onClick="{{d.go}}" aria-label="{{d.label}}"><span></span></button>
+</sc-for>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"start":{"editor":null},"frameH":{"editor":null},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  _start() {
+    const v = parseInt(this.props.start, 10);
+    return v >= 0 && v <= 2 ? v : 0;
+  }
+  _idx() {
+    const s = this.state || {};
+    return s.idx != null ? s.idx : this._start();
+  }
+  componentDidMount() {
+    this._alive = true;
+    this._init(0);
+  }
+  componentWillUnmount() {
+    this._alive = false;
+    clearTimeout(this._it); clearTimeout(this._settleT);
+    if (this._ro) this._ro.disconnect();
+  }
+  _track() {
+    if (!this._root) this._root = document.querySelector('.js-root');
+    return this._root ? this._root.querySelector('.js-track') : null;
+  }
+  _init(n) {
+    if (!this._alive) return;
+    const tr = this._track();
+    if (!tr || tr.clientWidth < 2 || tr.children.length < 5) {
+      if (n < 120) this._it = setTimeout(() => this._init(n + 1), 60);
+      return;
+    }
+    tr.scrollLeft = (this._idx() + 1) * tr.clientWidth;
+    this._setWide();
+    try {
+      this._ro = new ResizeObserver(() => {
+        const t = this._track(); if (t) t.scrollLeft = (this._idx() + 1) * t.clientWidth;
+        this._setWide();
+      });
+      this._ro.observe(this._root);
+    } catch (e) {}
+  }
+  _setWide() {
+    const r = this._root; if (!r) return;
+    const w = r.offsetWidth >= 900 && r.offsetHeight >= 520;
+    if (w !== !!(this.state || {}).wide) this.setState({ wide: w });
+  }
+  // when the track comes to rest on a clone panel, jump silently to the real one
+  _settle() {
+    const tr = this._track(); if (!tr) return;
+    const w = tr.clientWidth || 1, pos = Math.round(tr.scrollLeft / w);
+    if (pos <= 0) tr.scrollLeft = 3 * w;
+    else if (pos >= 4) tr.scrollLeft = 1 * w;
+  }
+  _go(d) {
+    const tr = this._track(); if (!tr) return;
+    const w = tr.clientWidth || 1;
+    let pos = Math.round(tr.scrollLeft / w);
+    if (pos <= 0) { tr.scrollLeft = 3 * w; pos = 3; }
+    else if (pos >= 4) { tr.scrollLeft = 1 * w; pos = 1; }
+    try { tr.scrollTo({ left: (pos + d) * w, behavior: 'smooth' }); } catch (e) { tr.scrollLeft = (pos + d) * w; }
+  }
+  _goTo(i) {
+    const tr = this._track(); if (!tr) return;
+    const w = tr.clientWidth || 1;
+    try { tr.scrollTo({ left: (i + 1) * w, behavior: 'smooth' }); } catch (e) { tr.scrollLeft = (i + 1) * w; }
+  }
+  renderVals() {
+    const s = this.state || {};
+    const idx = this._idx();
+    if (!this._setRoot) this._setRoot = (el) => { if (el) this._root = el; };
+    const fh = Number(this.props.frameH);
+    const names = ['一揆したい', '国外脱出したい', '祭りたい'];
+    return {
+      setRoot: this._setRoot,
+      rootClass: 'js-root' + (s.wide ? ' js-wide' : ''),
+      rootH: fh > 0 ? fh + 'px' : '100vh',
+      fh: fh > 0 ? fh : 0,
+      dots: names.map((n, i) => ({ cls: 'js-dot' + (i === idx ? ' on' : ''), label: n + ' へ移動', go: () => this._goTo(i) })),
+      prev: () => this._go(-1),
+      next: () => this._go(1),
+      onScroll: (e) => {
+        const t = e.currentTarget, w = t.clientWidth || 1;
+        const pos = Math.round(t.scrollLeft / w);
+        const i = (((pos - 1) % 3) + 3) % 3;
+        if (i !== this._idx()) this.setState({ idx: i });
+        clearTimeout(this._settleT);
+        this._settleT = setTimeout(() => this._settle(), 160);
+      },
+      onWheel: (e) => {
+        const dx = e.deltaX, dy = e.deltaY;
+        if (Math.abs(dy) <= Math.abs(dx) || Math.abs(dy) < 14) return;
+        const now = Date.now();
+        if (this._wheelT && now - this._wheelT < 700) return;
+        this._wheelT = now;
+        this._go(dy > 0 ? 1 : -1);
+      },
+      onKey: (e) => {
+        if (e.key === 'ArrowRight') { e.preventDefault(); this._go(1); }
+        else if (e.key === 'ArrowLeft') { e.preventDefault(); this._go(-1); }
+      }
+    };
+  }
+}
+</script>
+</body>
+</html>
