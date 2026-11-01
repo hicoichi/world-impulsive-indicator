@@ -28,11 +28,11 @@
 | E2E | Playwright（スマホ 390×844／PC 1280×800） | T-01 |
 | Lint／整形 | `@nuxt/eslint`（Prettier なし、セミコロンなし、シングルクォート） | T-01 |
 | レンダリング | 静的生成（`nuxt generate`） | T-01 |
-| デプロイ先 | GitHub Pages（`https://hicoichi.github.io/world-impulsive-indicator/`、`NUXT_APP_BASE_URL` でサブパス指定） | T-04 |
+| デプロイ先 | GitHub Pages（`https://hicoichi.github.io/world-impulsive-indicator/`、`NUXT_APP_BASE_URL` でサブパス指定）【確定】。`.github/workflows/ci.yml` の `pages` ジョブが、変数 `API_BASE_URL` の World API に接続する版を書き出して公開する（未設定なら失敗する） | T-04 |
 
-## 地球と演出の描画【未確定：T-02】
+## 地球と演出の描画【確定：Canvas 2D】
 
-USM の要求（明確に地球と分かる、具体的なモチーフ、粒子・花火、モバイルで快適）から候補を挙げる。決まるまで描画ライブラリを導入しない。
+UI モックが Canvas 2D で描かれていたため、それに合わせた（2026-11-01、docs/frontend-plan.md §2.1）。描画ライブラリは導入しない。以下は検討時の候補の記録。
 
 | 案 | 内容 | 長所 | 短所 |
 |---|---|---|---|

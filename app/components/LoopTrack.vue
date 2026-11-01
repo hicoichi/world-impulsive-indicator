@@ -1,11 +1,15 @@
 <script setup lang="ts">
 // 横スクロールで衝動を切り替える枠。ヘッダー（地域のピル）、PC の矢印、ページドットを持つ。
 // 配置と寸法は UI モック（JpSwipe）の値。ヘッダーの名前は表示しない（docs/frontend-plan.md Q-17）
-import { ref } from 'vue'
+import { inject, ref } from 'vue'
 import { IMPULSE_KEYS, IMPULSE_LABELS } from '#shared/domain/impulse'
 import { useLoopTrack } from '../composables/useLoopTrack'
+import { WORLD_KEY } from '../composables/useWorld'
 import { loopPanels } from '../domain/loop'
 import ImpulseScene from './ImpulseScene.vue'
+
+const world = inject(WORLD_KEY)
+if (!world) throw new Error('useWorld が provide されていない')
 
 const track = ref<HTMLElement | null>(null)
 const panels = loopPanels(IMPULSE_KEYS)
@@ -38,7 +42,9 @@ const { current, go, goTo, onScroll, onWheel, onKeydown } = useLoopTrack(track, 
       >
         <ImpulseScene
           :impulse="panel.item"
-          :count="null"
+          :view="world.views[panel.item].value"
+          :clone="panel.clone"
+          :vote="() => world.vote(panel.item)"
         />
       </div>
     </div>

@@ -4,6 +4,7 @@ import { contributionUnitsOf, unitsToContribution } from '../../../shared/domain
 import { createImpulseRecord, IMPULSE_KEYS, type ImpulseKey } from '../../../shared/domain/impulse'
 import { createRegionRecord, type RegionBucket } from '../../../shared/domain/region'
 import { activeVotes, hasReachedLimit, remainingVotes, type CastVote } from '../../../shared/domain/vote'
+import type { ImpulseState } from '../../../shared/domain/worldState'
 import { bucketExpiresAt, bucketStart, firstBucketInWindow } from './buckets'
 import type { BucketTotals, SessionVotes, VoteStore } from './vote-store'
 
@@ -17,16 +18,6 @@ export interface VoteServiceDeps {
 }
 
 export type ImpulseCounts = Record<ImpulseKey, number>
-
-/** ある衝動の集計状態（GET /v1/state の1衝動分） */
-export interface ImpulseState {
-  /** 有効投票数。画面に表示する実数 */
-  votes: number
-  /** 寄与度の合計。演出の強さに使う */
-  momentum: number
-  /** 地域ごとの寄与度の合計。地球上の演出の配置に使う */
-  regions: Record<RegionBucket, number>
-}
 
 export type CastVoteResult
   = | { status: 'accepted' | 'duplicate', remaining: ImpulseCounts }

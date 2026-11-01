@@ -12,6 +12,9 @@ async function expectActive(page: Page, name: string) {
   await expect(page.locator('.dot[aria-current="true"]')).toHaveAttribute('aria-label', `${name} へ移動`)
 }
 
+// API の URL なしで書き出した版（モックの WorldSource）を確かめる。API 接続版は api.spec.ts
+test.skip(!!process.env.E2E_API_BASE_URL, 'API 接続版のビルドでは api.spec.ts だけを動かす')
+
 test.beforeEach(async ({ page }) => {
   await page.goto('./')
   await expectActive(page, NAMES[0]!)
@@ -94,5 +97,65 @@ test.describe('スマホ', () => {
     })
     await expectActive(page, '祭りたい')
     await expect.poll(() => page.locator('.track').evaluate(el => Math.round(el.scrollLeft / el.clientWidth))).toBe(3)
+  })
+})
+
+test.describe('投票', () => {
+  async function count(page: Page): Promise<number> {
+    const text = await activePanel(page).locator('.count').textContent()
+    return Number((text ?? '').replace(/,/g, ''))
+  }
+
+  test('集計数を表示し、押すと +1 される', async ({ page }) => {
+    await expect(activePanel(page).locator('.count')).not.toHaveText('—')
+    const before = await count(page)
+    await activePanel(page).getByRole('button', { name: '一揆したい に投票する' }).click()
+    await expect.poll(() => count(page)).toBe(before + 1)
+  })
+
+  test('10票で上限になり、ボタンが弱まって一文が出る。11票目は数えない', async ({ page }) => {
+    const button = activePanel(page).getByRole('button', { name: '一揆したい に投票する' })
+    await expect(activePanel(page).locator('.count')).not.toHaveText('—')
+    const before = await count(page)
+    for (let i = 0; i < 10; i++) await button.click()
+    await expect(button).toHaveAttribute('aria-disabled', 'true')
+    await expect(activePanel(page).locator('.limit')).toHaveText('しばらくしてから、また')
+    await button.click()
+    await expect.poll(() => count(page)).toBe(before + 10)
+  })
+
+  test('上限は衝動ごとに独立している', async ({ page }) => {
+    const button = activePanel(page).getByRole('button', { name: '一揆したい に投票する' })
+    for (let i = 0; i < 10; i++) await button.click()
+    await page.getByRole('button', { name: '国外脱出したい へ移動' }).click()
+    await expectActive(page, '国外脱出したい')
+    await expect(activePanel(page).getByRole('button', { name: '国外脱出したい に投票する' })).not.toHaveAttribute('aria-disabled', 'true')
+  })
+})
+
+test.describe('地球の描画', () => {
+  test('canvas に地球が描かれ、エラーが出ない', async ({ page }) => {
+    const errors: string[] = []
+    page.on('pageerror', e => errors.push(e.message))
+    page.on('console', (m) => {
+      if (m.type() === 'error' || m.type() === 'warning') errors.push(m.text())
+    })
+    await page.reload()
+    await expectActive(page, NAMES[0]!)
+    // 背景だけでなく、明るい粒子（日本列島）が描かれている
+    await expect.poll(() => activePanel(page).locator('canvas').evaluate((el) => {
+      const c = el as HTMLCanvasElement
+      const x = c.getContext('2d')
+      if (!x || c.width < 2) return 0
+      const d = x.getImageData(0, 0, c.width, c.height).data
+      let bright = 0
+      for (let i = 0; i < d.length; i += 4 * 7) if ((d[i] ?? 0) + (d[i + 1] ?? 0) + (d[i + 2] ?? 0) > 500) bright++
+      return bright
+    }), { timeout: 10_000 }).toBeGreaterThan(50)
+    // 投票の演出（通常・レア）を何度起こしてもエラーにならない
+    const button = activePanel(page).getByRole('button', { name: '一揆したい に投票する' })
+    for (let i = 0; i < 10; i++) await button.click()
+    await page.waitForTimeout(1500)
+    expect(errors.filter(e => !e.includes('fonts.g'))).toEqual([])
   })
 })

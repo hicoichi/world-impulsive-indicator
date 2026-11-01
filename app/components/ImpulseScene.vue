@@ -1,22 +1,39 @@
 <script setup lang="ts">
-// 1つの衝動の画面：地球（F2 で描画）、見出し・衝動名・集計数、投票ボタン。
-// 配置と寸法は UI モック（JpScene）の値
-import { computed } from 'vue'
+// 1つの衝動の画面：地球と演出（canvas）、見出し・衝動名・集計数、投票ボタン。
+// 配置・寸法・投票時の手応え（ポップ・フラッシュ・揺れ・振動）は UI モック（JpScene）の値
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { IMPULSE_LABELS, type ImpulseKey } from '#shared/domain/impulse'
+import type { ImpulseView } from '../composables/useWorld'
+import { useReducedMotion } from '../composables/useReducedMotion'
+import type { EffectChoice } from '../domain/effectLottery'
 import { IMPULSE_THEMES } from '../domain/impulseTheme'
+import { createEngine, type Engine } from '../visuals/stage'
 import ImpulseIcon from './ImpulseIcon.vue'
 
 const props = defineProps<{
   impulse: ImpulseKey
-  /** 有効投票数。まだ取得できていなければ null */
-  count: number | null
+  view: ImpulseView
+  /** ループの端の複製。初回の演出をせず、操作も受けない */
+  clone?: boolean
+  /** 投票する。受け付けたら演出の抽選結果、上限なら null */
+  vote: () => EffectChoice | null
 }>()
-
-const emit = defineEmits<{ vote: [] }>()
 
 const label = computed(() => IMPULSE_LABELS[props.impulse])
 const theme = computed(() => IMPULSE_THEMES[props.impulse])
-const countText = computed(() => (props.count === null ? '—' : props.count.toLocaleString('ja-JP')))
+const countText = computed(() => (props.view.count === null ? '—' : props.view.count.toLocaleString('ja-JP')))
+
+const root = ref<HTMLElement | null>(null)
+const canvas = ref<HTMLCanvasElement | null>(null)
+const stage = ref<HTMLElement | null>(null)
+const reducedMotion = useReducedMotion()
+let engine: Engine | null = null
+
+// 同じアニメーションを続けて起こせるよう、A と B を交互に付け替える（UI モックと同じ方式）
+const pop = ref<0 | 1 | 2>(0)
+const flash = ref<0 | 1 | 2>(0)
+const shake = ref<0 | 1 | 2>(0)
+const next = (v: 0 | 1 | 2): 1 | 2 => (v === 1 ? 2 : 1)
 
 const style = computed(() => ({
   '--accent': theme.value.accent,
@@ -26,20 +43,76 @@ const style = computed(() => ({
   '--halo': theme.value.button.halo,
   '--button-shadow': theme.value.button.shadow,
 }))
+
+function vibrate(pattern: number | number[]): void {
+  try {
+    navigator.vibrate?.(pattern)
+  }
+  catch {
+    // 振動できない端末では何もしない
+  }
+}
+
+function onVote(): void {
+  const choice = props.vote()
+  if (!choice) return
+  pop.value = next(pop.value)
+  const rare = choice.kind === 'rare'
+  if (rare) {
+    flash.value = next(flash.value)
+    shake.value = next(shake.value)
+  }
+  engine?.play(choice)
+  vibrate(rare ? [20, 40, 80] : 12)
+}
+
+onMounted(() => {
+  if (!canvas.value || !root.value || !stage.value) return
+  try {
+    engine = createEngine({
+      canvas: canvas.value,
+      root: root.value,
+      stage: stage.value,
+      impulse: props.impulse,
+      intro: !props.clone,
+      reducedMotion: reducedMotion.value,
+    })
+    engine.setVisual(props.view.visual)
+  }
+  catch (error) {
+    // 描画できなくても、数字と投票は使えるようにする
+    console.warn('地球を描画できない', error)
+  }
+})
+
+watch(() => props.view.visual, visual => engine?.setVisual(visual))
+watch(reducedMotion, value => engine?.setReducedMotion(value))
+onBeforeUnmount(() => engine?.destroy())
 </script>
 
 <template>
   <section
+    ref="root"
     class="scene"
+    :class="{ shakeA: shake === 1, shakeB: shake === 2 }"
     :style="style"
     :aria-label="label"
   >
-    <!-- 地球と演出の描画先（F2）。装飾なので読み上げない -->
+    <!-- 地球と演出の描画先。装飾なので読み上げない -->
     <canvas
+      ref="canvas"
       class="canvas"
       aria-hidden="true"
     />
-    <div class="stage" />
+    <div
+      class="flash"
+      :class="{ flashA: flash === 1, flashB: flash === 2 }"
+      :style="{ background: theme.flash }"
+    />
+    <div
+      ref="stage"
+      class="stage"
+    />
     <div class="info">
       <div class="overline">
         {{ theme.overline }}
@@ -47,7 +120,10 @@ const style = computed(() => ({
       <h2 class="name">
         {{ label }}
       </h2>
-      <div class="count">
+      <div
+        class="count"
+        :class="{ popA: pop === 1, popB: pop === 2 }"
+      >
         {{ countText }}
       </div>
     </div>
@@ -55,13 +131,24 @@ const style = computed(() => ({
       <button
         type="button"
         class="vote"
+        :class="{ spent: view.limitReached }"
         :aria-label="`${label} に投票する`"
-        @click="emit('vote')"
+        :aria-disabled="view.limitReached || undefined"
+        @click="onVote"
       >
         <ImpulseIcon :impulse="impulse" />
         <span>{{ label }}</span>
       </button>
     </div>
+    <!-- 上限の一文。仕組み（12時間・10票）は書かない（docs/frontend-plan.md Q-10） -->
+    <p
+      class="limit"
+      aria-live="polite"
+    >
+      <template v-if="view.limitReached">
+        しばらくしてから、また
+      </template>
+    </p>
   </section>
 </template>
 
@@ -80,6 +167,104 @@ const style = computed(() => ({
   height: 100%;
   display: block;
   pointer-events: none;
+}
+
+.flash {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  opacity: 0;
+}
+
+.flashA {
+  animation: flashA 1.1s ease-out;
+}
+
+.flashB {
+  animation: flashB 1.1s ease-out;
+}
+
+@keyframes flashA {
+  0% {
+    opacity: 0.9;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes flashB {
+  0% {
+    opacity: 0.9;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
+.shakeA {
+  animation: shakeA 0.6s ease-out;
+}
+
+.shakeB {
+  animation: shakeB 0.6s ease-out;
+}
+
+@keyframes shakeA {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+
+  15% {
+    transform: translate(-7px, 4px);
+  }
+
+  30% {
+    transform: translate(6px, -5px);
+  }
+
+  45% {
+    transform: translate(-4px, 3px);
+  }
+
+  60% {
+    transform: translate(3px, -2px);
+  }
+
+  80% {
+    transform: translate(-1px, 1px);
+  }
+}
+
+@keyframes shakeB {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+
+  15% {
+    transform: translate(7px, -4px);
+  }
+
+  30% {
+    transform: translate(-6px, 5px);
+  }
+
+  45% {
+    transform: translate(4px, -3px);
+  }
+
+  60% {
+    transform: translate(-3px, 2px);
+  }
+
+  80% {
+    transform: translate(1px, -1px);
+  }
 }
 
 /* 地球を描く範囲。描画エンジンはこの要素の位置と大きさを基準にする */
@@ -134,6 +319,42 @@ const style = computed(() => ({
   transform-origin: 50% 60%;
 }
 
+.popA {
+  animation: popA 0.55s cubic-bezier(0.2, 1.7, 0.4, 1);
+}
+
+.popB {
+  animation: popB 0.55s cubic-bezier(0.2, 1.7, 0.4, 1);
+}
+
+@keyframes popA {
+  0% {
+    transform: scale(1);
+  }
+
+  30% {
+    transform: scale(1.14);
+  }
+
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes popB {
+  0% {
+    transform: scale(1);
+  }
+
+  30% {
+    transform: scale(1.14);
+  }
+
+  100% {
+    transform: scale(1);
+  }
+}
+
 .cta {
   position: absolute;
   left: 0;
@@ -164,7 +385,7 @@ const style = computed(() => ({
   font-size: 21px;
   letter-spacing: 0.08em;
   cursor: pointer;
-  transition: transform 0.12s ease, filter 0.2s ease;
+  transition: transform 0.12s ease, filter 0.2s ease, opacity 0.3s ease;
   touch-action: manipulation;
 }
 
@@ -203,6 +424,37 @@ const style = computed(() => ({
     transform: scale(1.06);
     opacity: 0.12;
   }
+}
+
+/* 上限に達したら弱める */
+.vote.spent {
+  opacity: 0.45;
+  filter: saturate(0.5);
+  cursor: default;
+}
+
+.vote.spent:active {
+  transform: none;
+}
+
+.vote.spent::before {
+  animation: none;
+  opacity: 0;
+}
+
+.limit {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 36px;
+  margin: 0;
+  text-align: center;
+  font-size: 11px;
+  line-height: 1;
+  letter-spacing: 0.12em;
+  color: rgba(244, 241, 234, 0.75);
+  z-index: 4;
+  pointer-events: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -252,6 +504,11 @@ const style = computed(() => ({
     height: 78px;
     font-size: 23px;
     border-radius: 39px;
+  }
+
+  /* PC はボタンの上に出す（下はページドットと重なるため） */
+  .limit {
+    bottom: 136px;
   }
 }
 </style>

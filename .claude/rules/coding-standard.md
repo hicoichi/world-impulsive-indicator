@@ -28,7 +28,7 @@
 | `app/domain/` | 画面だけが使う純粋なロジック（**演出の抽選・集計値から演出強度への対応**、緯度経度から地方への変換など）。Vue・Nuxt を import しない |
 | `shared/domain/` | 画面と Lambda で共有する純粋なロジック（衝動、上限・ウィンドウ、寄与度、地域コード）。規約は `.claude/rules/infra.md` |
 | `app/data/` | World API との通信（集計状態の取得・投票の送信）とモック実装。姉妹リポジトリの `ImpulseCountSource` と同じ考え方の境界 |
-| `app/visuals/` | 描画エンジン（T-02 で決めた方式）の初期化・破棄・描画ループ。Vue に依存させすぎない |
+| `app/visuals/` | 描画エンジン（Canvas 2D）。`stage.ts`（中核）、`modes/`（衝動ごとの持続的な演出と投票の演出）、`geo.ts`（地理）、`draw.ts`（部品）、`ticker.ts`（共有の描画ループ）。Vue を import しない |
 
 - `server/` は作らない。バックエンドは `infra/`（`.claude/rules/infra.md`）。
 - 上限・ウィンドウ・寄与度・地域の定義を `app/` に書き直さない。`shared/domain/` を import する。

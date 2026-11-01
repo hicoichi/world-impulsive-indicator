@@ -14,7 +14,7 @@
 | 対象 | 状態 |
 |---|---|
 | バックエンド（`infra/`、`shared/domain/`） | **実装済み・未デプロイ**（2026-11-01）。デプロイは初回の準備（`.claude/rules/infra.md`）とユーザーの承認の後 |
-| フロントエンド（ルートの Nuxt、`app/`） | **実装中**。計画 `docs/frontend-plan.md`（承認済み）の段階 F1〜F6 を順に進め、各段階の終わりにユーザーの確認を得てから次へ進む。UI モックは `mock/` |
+| フロントエンド（ルートの Nuxt、`app/`） | **MVP 実装済み**（2026-11-01、`docs/frontend-plan.md` の F1〜F6）。GitHub Pages（https://hicoichi.github.io/world-impulsive-indicator/）に公開。次の段階は位置情報と共有（未着手） |
 
 - フロントエンドに着手するときは、USM §6 の指示どおり「姉妹アプリの実装・UI モックと本 USM の差分」と「改修計画」を提示し、承認を得てから大規模な実装を始める。
 - 新しく実装する前に、対象ストーリーに関わる USM §9 の未確定事項が確定しているか確認する。
@@ -75,7 +75,8 @@
 
 - バックエンド：AWS CDK（TypeScript）で `infra/`。CloudFront → API Gateway（HTTP API）→ Lambda → DynamoDB。規約は `.claude/rules/infra.md`。
 - 画面と Lambda で共有するロジックは `shared/domain/`（Nuxt 4 の `shared/` の規約に合わせた置き場所）。
-- フロントエンド：Nuxt 4 の静的生成（暫定）。3D・描画の方式は未確定（USM T-02）。詳細は `.claude/rules/tech-stack.md`。
+- フロントエンド：Nuxt 4 の静的生成。地球と演出は Canvas 2D（依存なし。UI モックの描画エンジンを `app/visuals/` に移植）。詳細は `.claude/rules/tech-stack.md`。
+- UI モック（`mock/`）を見た目の正とする。モックと違う点はユーザーが決めたもの（`docs/frontend-plan.md` §2）。
 - モバイル主軸、PC 対応。モバイルで快適に動くことを最優先する。
 - 書き方は `.claude/rules/coding-standard.md` に従う。
 

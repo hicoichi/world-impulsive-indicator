@@ -29,8 +29,8 @@ export function isRegionKey(value: unknown): value is RegionKey {
   return typeof value === 'string' && (REGION_KEYS as readonly string[]).includes(value)
 }
 
-/** 各地域（「不明」を含む）に同じ初期値を持つ記録を作る */
-export function createRegionRecord<T>(initial: (bucket: RegionBucket) => T): Record<RegionBucket, T> {
+/** 8地方それぞれに初期値を持つ記録を作る */
+export function createRegionKeyRecord<T>(initial: (key: RegionKey) => T): Record<RegionKey, T> {
   return {
     hokkaido: initial('hokkaido'),
     tohoku: initial('tohoku'),
@@ -40,6 +40,10 @@ export function createRegionRecord<T>(initial: (bucket: RegionBucket) => T): Rec
     chugoku: initial('chugoku'),
     shikoku: initial('shikoku'),
     kyushu: initial('kyushu'),
-    unknown: initial(UNKNOWN_REGION),
   }
+}
+
+/** 各地域（「不明」を含む）に同じ初期値を持つ記録を作る */
+export function createRegionRecord<T>(initial: (bucket: RegionBucket) => T): Record<RegionBucket, T> {
+  return { ...createRegionKeyRecord(initial), unknown: initial(UNKNOWN_REGION) }
 }

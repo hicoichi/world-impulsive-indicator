@@ -1,6 +1,8 @@
-# 画面（ルートの Nuxt）を検査する。main への push と PR で動く。
+# 画面（ルートの Nuxt）を検査し、main への push では GitHub Pages に公開する。
 # 手元の WSL では E2E 用ブラウザのシステムライブラリが入っていないため、E2E はここで確かめる。
-# 公開（GitHub Pages）は段階 F6 で別に追加する（docs/frontend-plan.md）。
+#
+# - check：lint・型チェック・単体テスト・モック版の静的生成と E2E（main.spec.ts）
+# - pages：公開版（World API に接続、サブパス配信）を書き出し、通信をスタブした E2E（api.spec.ts）を通してから公開する
 name: CI
 
 on:
@@ -52,20 +54,91 @@ jobs:
       - name: 単体テスト
         run: npm test
 
-      - name: 静的サイトを生成
+      - name: 静的サイトを生成（モック版）
+        env:
+          NUXT_PUBLIC_API_BASE_URL: ''
         run: npm run generate
 
       # 生成した成果物そのものを、スマホと PC のビューポートで確かめる
       - name: E2E 用のブラウザをインストール
         run: npx playwright install --with-deps chromium
 
-      - name: E2E テスト
+      - name: E2E テスト（モック版）
         run: npm run test:e2e
 
       - name: 失敗時の記録を残す
         if: failure()
         uses: actions/upload-artifact@v5
         with:
-          name: playwright-results
+          name: playwright-results-check
           path: test-results/
           retention-days: 7
+
+  pages:
+    needs: check
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    env:
+      API_BASE_URL: ${{ vars.API_BASE_URL }}
+      BASE_PATH: /${{ github.event.repository.name }}/
+    steps:
+      # 公開版は必ず World API に接続する（モックの仮の数値を公開しない）
+      - name: API の URL が設定されていることを確認
+        run: |
+          if [ -z "$API_BASE_URL" ]; then
+            echo "::error::GitHub の変数 API_BASE_URL（World API の URL）を設定してください"
+            exit 1
+          fi
+
+      - name: リポジトリを取得
+        uses: actions/checkout@v7
+
+      - name: Node.js をセットアップ
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: 依存関係をインストール
+        run: npm ci
+
+      - name: 静的サイトを生成（公開版）
+        env:
+          NUXT_PUBLIC_API_BASE_URL: ${{ env.API_BASE_URL }}
+          NUXT_APP_BASE_URL: ${{ env.BASE_PATH }}
+        run: npm run generate
+
+      - name: E2E 用のブラウザをインストール
+        run: npx playwright install --with-deps chromium
+
+      # 公開する成果物そのものを、サブパスで、通信をスタブして確かめる
+      - name: E2E テスト（公開版）
+        env:
+          E2E_API_BASE_URL: ${{ env.API_BASE_URL }}
+          E2E_BASE_PATH: ${{ env.BASE_PATH }}
+        run: npm run test:e2e
+
+      - name: 失敗時の記録を残す
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: playwright-results-pages
+          path: test-results/
+          retention-days: 7
+
+      - name: Pages 用の成果物をアップロード
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: .output/public
+
+      - name: GitHub Pages に公開
+        id: deploy
+        uses: actions/deploy-pages@v5
