@@ -1,4 +1,6 @@
-# world-impulsive-indicator
+# スパンコール・ウォッチャー
+
+リポジトリ名：world-impulsive-indicator
 
 世界の空気を、衝動で測る。
 

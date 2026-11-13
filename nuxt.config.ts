@@ -5,8 +5,9 @@ export default defineNuxtConfig({
   app: {
     head: {
       htmlAttrs: { lang: 'ja' },
-      title: '世界の空気を、衝動で測る。',
+      title: 'スパンコール・ウォッチャー',
       meta: [
+        { name: 'description', content: '世界の空気を、衝動で測る。' },
         { name: 'viewport', content: 'width=device-width, initial-scale=1, viewport-fit=cover' },
         { name: 'theme-color', content: '#01030a' },
       ],
