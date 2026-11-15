@@ -144,8 +144,10 @@ test.describe('レア演出の設定', () => {
     await page.getByRole('button', { name: '設定を閉じる' }).click()
     await expect(activePanel(page).locator('.count')).not.toHaveText('—')
     const before = await count(page)
-    const button = activePanel(page).getByRole('button', { name: '一揆したい に投票する' })
-    for (let i = 0; i < 20; i++) await button.click()
+    // 1回ずつ押すと集計の取り直しをまたぎ、モックでは数が一時的にずれるため、まとめて押す（main.spec.ts と同じ）
+    await activePanel(page).getByRole('button', { name: '一揆したい に投票する' }).evaluate((el) => {
+      for (let i = 0; i < 20; i++) (el as HTMLButtonElement).click()
+    })
     await expect.poll(() => count(page)).toBe(before + 20)
     // レアの演出（画面の揺れ）は起きない
     await expect(activePanel(page).locator('.scene.shakeA, .scene.shakeB')).toHaveCount(0)
