@@ -21,7 +21,10 @@ async function expectActive(page: Page, name: string) {
 
 async function toKannami(page: Page) {
   await page.getByRole('button', { name: /函南町/ }).click()
-  await expect(page.locator('[data-mode="kannami"].layer')).toBeVisible()
+  const layer = page.locator('.layer[data-mode="kannami"]')
+  await expect(layer).toBeVisible()
+  // 入場の演出（拡大から戻る）が終わってから確かめる
+  await layer.evaluate(el => Promise.all(el.getAnimations().map(a => a.finished)))
   await expectActive(page, KANNAMI_NAMES[0]!)
 }
 
@@ -36,7 +39,7 @@ test.beforeEach(async ({ page }) => {
 })
 
 test('最初はオリジナル版で、切替のボタンで現在のモードが分かる', async ({ page }) => {
-  await expect(page.locator('[data-mode="world"].layer')).toBeVisible()
+  await expect(page.locator('.layer[data-mode="world"]')).toBeVisible()
   await expect(page.getByRole('button', { name: /オリジナル/ })).toHaveAttribute('aria-pressed', 'true')
   await expect(page.getByRole('button', { name: /函南町/ })).toHaveAttribute('aria-pressed', 'false')
 })
@@ -46,7 +49,7 @@ test('函南町版に切り替えると、3つの衝動がこの順に並び、�
   await toKannami(page)
   expect(page.url()).toBe(url)
   await expect(page.getByRole('button', { name: /函南町/ })).toHaveAttribute('aria-pressed', 'true')
-  await expect(page.locator('[data-mode="world"]')).toHaveCount(0)
+  await expect(page.locator('.layer[data-mode="world"]')).toHaveCount(0)
   await expect(page.locator('.dot')).toHaveCount(3)
   for (const [index, name] of KANNAMI_NAMES.entries()) {
     await expect(page.locator('.dot').nth(index)).toHaveAttribute('aria-label', `${name} へ移動`)
@@ -153,7 +156,7 @@ test('再読み込みするとオリジナル版から始まる', async ({ page 
   await toKannami(page)
   await page.reload()
   await expectActive(page, '一揆したい')
-  await expect(page.locator('[data-mode="world"].layer')).toBeVisible()
+  await expect(page.locator('.layer[data-mode="world"]')).toBeVisible()
 })
 
 test('どちらのモードでも、主要な要素が画面内に収まり、横スクロールバーが出ない', async ({ page }) => {
