@@ -91,9 +91,9 @@ describe('評価対象（target）', () => {
     expect(TARGETS.world.usesRegion).toBe(true)
   })
 
-  test('函南町版の衝動は 骨を埋めたい → 一揆したい → 荷物をまとめたい で、位置情報を使わない', () => {
-    expect(TARGETS.kannami.impulses).toEqual(['settle', 'ikki', 'pack'])
-    expect(KANNAMI_IMPULSE_KEYS.map(key => KANNAMI_IMPULSE_LABELS[key])).toEqual(['骨を埋めたい', '一揆したい', '荷物をまとめたい'])
+  test('函南町版の衝動は 一揆したい → 荷物をまとめたい → 骨を埋めたい で、位置情報を使わない', () => {
+    expect(TARGETS.kannami.impulses).toEqual(['ikki', 'pack', 'settle'])
+    expect(KANNAMI_IMPULSE_KEYS.map(key => KANNAMI_IMPULSE_LABELS[key])).toEqual(['一揆したい', '荷物をまとめたい', '骨を埋めたい'])
     expect(TARGETS.kannami.usesRegion).toBe(false)
   })
 
@@ -105,7 +105,7 @@ describe('評価対象（target）', () => {
   })
 
   test('対象の衝動ごとの記録を順序どおりに作る', () => {
-    expect(createTargetImpulseRecord('kannami', impulse => impulse.length)).toEqual({ settle: 6, ikki: 4, pack: 4 })
+    expect(createTargetImpulseRecord('kannami', impulse => impulse.length)).toEqual({ ikki: 4, pack: 4, settle: 6 })
     expect(Object.keys(createTargetImpulseRecord('world', () => 0))).toEqual(['ikki', 'exodus', 'festival'])
   })
 })

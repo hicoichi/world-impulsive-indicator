@@ -13,15 +13,15 @@ export type TargetKey = (typeof TARGET_KEYS)[number]
 /** 対象を省略したときの既定。オリジナル版（世界） */
 export const DEFAULT_TARGET: TargetKey = 'world'
 
-/** 函南町版の衝動の種類と順序 */
-export const KANNAMI_IMPULSE_KEYS = ['settle', 'ikki', 'pack'] as const
+/** 函南町版の衝動の種類と順序（2026-11-15 決定：一揆したい → 荷物をまとめたい → 骨を埋めたい） */
+export const KANNAMI_IMPULSE_KEYS = ['ikki', 'pack', 'settle'] as const
 
 export type KannamiImpulseKey = (typeof KANNAMI_IMPULSE_KEYS)[number]
 
 export const KANNAMI_IMPULSE_LABELS: Record<KannamiImpulseKey, string> = {
-  settle: '骨を埋めたい',
   ikki: '一揆したい',
   pack: '荷物をまとめたい',
+  settle: '骨を埋めたい',
 }
 
 interface TargetDefinition {

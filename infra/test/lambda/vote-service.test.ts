@@ -152,11 +152,11 @@ describe('getState（ローリングウィンドウ）', () => {
 })
 
 describe('評価対象（函南町版）', () => {
-  test('衝動は 骨を埋めたい・一揆したい・荷物をまとめたい の順で、地域の分布を持たない', async () => {
+  test('衝動は 一揆したい・荷物をまとめたい・骨を埋めたい の順で、地域の分布を持たない', async () => {
     const { deps } = setup()
     await castVote(deps, 's1', 'kannami', 'settle', 'v1', null)
     const state = await getState(deps, 'kannami')
-    expect(Object.keys(state)).toEqual(['settle', 'ikki', 'pack'])
+    expect(Object.keys(state)).toEqual(['ikki', 'pack', 'settle'])
     expect(state.settle).toEqual({ votes: 1, momentum: 1 })
     expect(state.ikki).toEqual({ votes: 0, momentum: 0 })
   })

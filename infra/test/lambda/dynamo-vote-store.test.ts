@@ -140,7 +140,7 @@ describe('DynamoDB の VoteStore', () => {
     })
     const store = storeWith(send)
     const kannami = await store.getSessionVotes('AAAAAAAAAAAAAAAAAAAAAA', 'kannami')
-    expect(Object.keys(kannami)).toEqual(['settle', 'ikki', 'pack'])
+    expect(Object.keys(kannami)).toEqual(['ikki', 'pack', 'settle'])
     expect(kannami.ikki).toEqual({ votes: [{ id: 'k1', at: 1_800_000_000_000 }], version: 2 })
     expect(kannami.settle).toEqual({ votes: [], version: 0 })
     const world = await store.getSessionVotes('AAAAAAAAAAAAAAAAAAAAAA', 'world')

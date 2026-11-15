@@ -150,9 +150,9 @@ describe('評価対象（target）', () => {
     expect(parse(response)).toEqual({
       target: 'kannami',
       impulses: {
-        settle: { votes: 1, momentum: 1 },
         ikki: { votes: 0, momentum: 0 },
         pack: { votes: 0, momentum: 0 },
+        settle: { votes: 1, momentum: 1 },
       },
     })
   })
