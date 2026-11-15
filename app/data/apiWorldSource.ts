@@ -1,10 +1,14 @@
-// World API（infra/）に接続する WorldSource（docs/world-api-design.md §3）
+// World API（infra/）に接続する WorldSource（docs/world-api-design.md §3、§8）
 //
-// - セッションは署名付きの匿名トークンで、localStorage に保存する。最初の投票のときに発行する
+// - セッションは署名付きの匿名トークンで、localStorage に保存する。最初の投票のときに発行する。
+//   トークンは評価対象をまたいで共通（上限はサーバーが対象ごとに数える）
 // - 上限の判定はサーバーが行い、ここでは結果を返すだけ
+// - オリジナル版（world）は対象を付けずに呼ぶ（対象を足す前と同じ URL・本文。CloudFront のキャッシュも共通）
 
-import { createImpulseRecord, IMPULSE_KEYS } from '#shared/domain/impulse'
-import { parseWorldState } from '#shared/domain/worldState'
+import { IMPULSE_KEYS, type ImpulseKey } from '#shared/domain/impulse'
+import { recordOf } from '#shared/domain/record'
+import { DEFAULT_TARGET, TARGETS, type TargetKey } from '#shared/domain/target'
+import { parseTargetState } from '#shared/domain/worldState'
 import type { Remaining, SubmitResult, WorldSource } from './worldSource'
 
 export const SESSION_TOKEN_HEADER = 'x-session-token'
@@ -51,18 +55,22 @@ export function createBrowserTokenStorage(): TokenStorage {
   }
 }
 
-export interface ApiWorldSourceOptions {
+export interface ApiWorldSourceOptions<K extends string = ImpulseKey> {
   /** CloudFront の URL（例：https://xxxx.cloudfront.net） */
   baseUrl: string
+  /** 評価対象。省略時はオリジナル版 */
+  target?: TargetKey
+  /** その対象の衝動のキー。省略時はオリジナル版の衝動 */
+  keys?: readonly K[]
   fetch?: typeof fetch
   storage?: TokenStorage
 }
 
-function toRemaining(value: unknown): Remaining | null {
+function toRemaining<K extends string>(value: unknown, keys: readonly K[]): Remaining<K> | null {
   if (typeof value !== 'object' || value === null) return null
   const record: Record<string, unknown> = { ...value }
-  if (!IMPULSE_KEYS.every(key => typeof record[key] === 'number')) return null
-  return createImpulseRecord((key) => {
+  if (!keys.every(key => typeof record[key] === 'number')) return null
+  return recordOf(keys, (key) => {
     const n = record[key]
     return typeof n === 'number' ? Math.max(0, n) : 0
   })
@@ -78,7 +86,14 @@ async function readJson(response: Response): Promise<Record<string, unknown>> {
   }
 }
 
-export function createApiWorldSource(options: ApiWorldSourceOptions): WorldSource {
+export function createApiWorldSource(options: ApiWorldSourceOptions<ImpulseKey>): WorldSource<ImpulseKey>
+export function createApiWorldSource<K extends string>(options: ApiWorldSourceOptions<K> & { target: TargetKey, keys: readonly K[] }): WorldSource<K>
+export function createApiWorldSource(options: ApiWorldSourceOptions<string>): WorldSource<string> {
+  const keys: readonly string[] = options.keys ?? IMPULSE_KEYS
+  const target = options.target ?? DEFAULT_TARGET
+  const { usesRegion } = TARGETS[target]
+  // オリジナル版は対象を付けない（今までと同じ URL・本文にする）
+  const query = target === DEFAULT_TARGET ? '' : `?target=${target}`
   const baseUrl = options.baseUrl.replace(/\/+$/, '')
   const doFetch = options.fetch ?? globalThis.fetch.bind(globalThis)
   const storage = options.storage ?? createBrowserTokenStorage()
@@ -88,7 +103,7 @@ export function createApiWorldSource(options: ApiWorldSourceOptions): WorldSourc
   }
 
   async function createSession(): Promise<string> {
-    const response = await doFetch(`${baseUrl}/v1/sessions`, { method: 'POST' })
+    const response = await doFetch(`${baseUrl}/v1/sessions${query}`, { method: 'POST' })
     if (!response.ok) throw new Error(`セッションを発行できなかった（HTTP ${response.status}）`)
     const body = await readJson(response)
     if (typeof body.token !== 'string' || !body.token) throw new Error('セッションの応答が不正')
@@ -97,8 +112,11 @@ export function createApiWorldSource(options: ApiWorldSourceOptions): WorldSourc
   }
 
   function postVote(token: string, impulse: string, voteId: string, region: string | null): Promise<Response> {
-    // 地方は使うときだけ付ける。緯度経度は送らない（docs/world-api-design.md Q-06b）
-    const body = region ? { impulse, voteId, region } : { impulse, voteId }
+    // 地方は使うときだけ付ける。緯度経度は送らない（docs/world-api-design.md Q-06b）。
+    // 位置情報を使わない対象には、地方を渡されても送らない（サーバーも 400 で拒否する。§8.4）
+    const body: Record<string, string> = { impulse, voteId }
+    if (target !== DEFAULT_TARGET) body.target = target
+    if (region && usesRegion) body.region = region
     return doFetch(`${baseUrl}/v1/votes`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', [SESSION_TOKEN_HEADER]: token },
@@ -109,9 +127,9 @@ export function createApiWorldSource(options: ApiWorldSourceOptions): WorldSourc
   return {
     async fetchState() {
       // ブラウザのキャッシュは使わない（CloudFront の数秒のキャッシュだけにする）
-      const response = await doFetch(`${baseUrl}/v1/state`, { cache: 'no-store' })
+      const response = await doFetch(`${baseUrl}/v1/state${query}`, { cache: 'no-store' })
       if (!response.ok) throw new Error(`集計を取得できなかった（HTTP ${response.status}）`)
-      const state = parseWorldState(await readJson(response))
+      const state = parseTargetState(await readJson(response), keys, usesRegion)
       if (!state) throw new Error('集計の応答が不正')
       return state
     },
@@ -119,7 +137,7 @@ export function createApiWorldSource(options: ApiWorldSourceOptions): WorldSourc
     async fetchRemaining() {
       const token = storage.get()
       if (!token) return null
-      const response = await doFetch(`${baseUrl}/v1/sessions/me`, { headers: { [SESSION_TOKEN_HEADER]: token } })
+      const response = await doFetch(`${baseUrl}/v1/sessions/me${query}`, { headers: { [SESSION_TOKEN_HEADER]: token } })
       if (response.status === 401) {
         storage.clear()
         return null
@@ -127,10 +145,10 @@ export function createApiWorldSource(options: ApiWorldSourceOptions): WorldSourc
       if (!response.ok) throw new Error(`残り枠を取得できなかった（HTTP ${response.status}）`)
       const body = await readJson(response)
       applyToken(body.token)
-      return toRemaining(body.remaining)
+      return toRemaining(body.remaining, keys)
     },
 
-    async submitVote(impulse, voteId, region): Promise<SubmitResult> {
+    async submitVote(impulse, voteId, region): Promise<SubmitResult<string>> {
       let token = storage.get() ?? await createSession()
       let response = await postVote(token, impulse, voteId, region)
       if (response.status === 401) {
@@ -141,7 +159,7 @@ export function createApiWorldSource(options: ApiWorldSourceOptions): WorldSourc
       }
       const body = await readJson(response)
       applyToken(body.token)
-      const remaining = toRemaining(body.remaining)
+      const remaining = toRemaining(body.remaining, keys)
       if (response.status === 409 && remaining) return { status: 'limit', remaining }
       if (!response.ok || !remaining) throw new Error(`投票できなかった（HTTP ${response.status}）`)
       return { status: body.result === 'duplicate' ? 'duplicate' : 'accepted', remaining }

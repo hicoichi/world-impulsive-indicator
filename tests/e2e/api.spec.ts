@@ -16,17 +16,29 @@ async function stubApi(page: Page) {
   const votes: unknown[] = []
   let ikki = 41
   let remaining = { ...FULL }
+  let kannamiRemaining = { ikki: 100, pack: 100, settle: 100 }
   await page.route(`${API}/**`, async (route) => {
     const req = route.request()
-    const path = new URL(req.url()).pathname
+    const url = new URL(req.url())
+    const path = url.pathname
+    // 函南町版は ?target=kannami を付けて呼ぶ（docs/world-api-design.md §8.4）
+    const kannami = url.searchParams.get('target') === 'kannami'
     if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'content-type, x-session-token', 'access-control-allow-methods': 'GET, POST, OPTIONS' } })
+    if (path === '/v1/state' && kannami) {
+      return json(route, 200, { target: 'kannami', impulses: { ikki: { votes: 9, momentum: 3 }, pack: { votes: 2, momentum: 2 }, settle: { votes: 30, momentum: 12 } } })
+    }
     if (path === '/v1/state') {
       return json(route, 200, { impulses: { ikki: { votes: ikki, momentum: 4, regions }, exodus: { votes: 7, momentum: 4, regions }, festival: { votes: 0, momentum: 0, regions } } })
     }
-    if (path === '/v1/sessions') return json(route, 201, { token: 'token-1', remaining })
-    if (path === '/v1/sessions/me') return json(route, 200, { token: 'token-1', remaining })
+    if (path === '/v1/sessions') return json(route, 201, { token: 'token-1', remaining: kannami ? kannamiRemaining : remaining })
+    if (path === '/v1/sessions/me') return json(route, 200, { token: 'token-1', remaining: kannami ? kannamiRemaining : remaining })
     if (path === '/v1/votes') {
-      votes.push({ body: req.postDataJSON(), token: req.headers()['x-session-token'] })
+      const body: unknown = req.postDataJSON()
+      votes.push({ body, token: req.headers()['x-session-token'] })
+      if (typeof body === 'object' && body !== null && 'target' in body && body.target === 'kannami') {
+        kannamiRemaining = { ...kannamiRemaining, ikki: kannamiRemaining.ikki - 1 }
+        return json(route, 200, { result: 'accepted', token: 'token-1', remaining: kannamiRemaining })
+      }
       ikki += 1
       remaining = { ...remaining, ikki: remaining.ikki - 1 }
       return json(route, 200, { result: 'accepted', token: 'token-1', remaining })
@@ -65,5 +77,27 @@ test.describe('位置情報を使う場合', () => {
     expect(body).toMatchObject({ impulse: 'ikki', region: 'kyushu' })
     expect(Object.keys(body).sort()).toEqual(['impulse', 'region', 'voteId'])
     expect(JSON.stringify(body)).not.toMatch(/33\.5|130\.4/)
+  })
+})
+
+test.describe('函南町版', () => {
+  test.use({ geolocation: { latitude: 35.08, longitude: 138.95 }, permissions: ['geolocation'] })
+
+  test('?target=kannami の集計を表示し、target を付けて送る。位置情報を使っていても地方は送らない', async ({ page }) => {
+    const votes = await stubApi(page)
+    await page.goto('./')
+    // オリジナル版で位置情報を使う設定にしてから、函南町版へ切り替える
+    await page.getByRole('button', { name: '現在地の地方を反映する' }).click()
+    await expect(page.getByRole('button', { name: '現在地の地方を反映する' })).toHaveText('JAPAN · CHUBU')
+    await page.getByRole('button', { name: /函南町/ }).click()
+    const panel = page.locator('.panel:not([data-clone])[aria-hidden="false"]')
+    await expect(panel.locator('.name')).toHaveText('一揆したい')
+    await expect(panel.locator('.count')).toHaveText('9')
+    await panel.getByRole('button', { name: '一揆したい に投票する' }).click()
+    await expect(panel.locator('.count')).toHaveText('10')
+    await expect.poll(() => votes.length).toBe(1)
+    const body = (votes[0] as { body: Record<string, unknown> }).body
+    expect(body).toMatchObject({ impulse: 'ikki', target: 'kannami' })
+    expect(Object.keys(body).sort()).toEqual(['impulse', 'target', 'voteId'])
   })
 })

@@ -3,12 +3,14 @@
 // - 集計状態は一定間隔で取得する（他の人の票の反映。USM Activity 5）
 // - 投票は楽観的に反映する：押した瞬間に集計数 +1・残り枠 −1、演出を抽選して返す
 // - 通信に失敗しても何も表示しない。裏で送り直し、確定しなかった票は静かに戻す（docs/frontend-plan.md Q-19）
+// - 評価対象（オリジナル版・函南町版）ごとに1つ作る。K はその対象の衝動のキー
 
-import { computed, reactive, type ComputedRef, type InjectionKey } from 'vue'
-import { createImpulseRecord, IMPULSE_KEYS, type ImpulseKey } from '#shared/domain/impulse'
-import type { RegionKey } from '#shared/domain/region'
+import { computed, reactive, type ComputedRef } from 'vue'
+import { IMPULSE_KEYS, type ImpulseKey } from '#shared/domain/impulse'
+import { recordOf } from '#shared/domain/record'
+import { createRegionRecord, type RegionKey } from '#shared/domain/region'
 import { VOTE_LIMIT } from '#shared/domain/vote'
-import type { WorldState } from '#shared/domain/worldState'
+import type { TargetImpulseState } from '#shared/domain/worldState'
 import { createEffectLottery, type EffectChoice } from '../domain/effectLottery'
 import { IDLE_VISUAL, visualOf, type ImpulseVisual } from '../domain/visualState'
 import type { Remaining, WorldSource } from '../data/worldSource'
@@ -42,8 +44,12 @@ export interface ImpulseView {
   limitReached: boolean
 }
 
-export interface WorldOptions {
-  source: WorldSource
+export interface WorldOptions<K extends string = ImpulseKey> {
+  source: WorldSource<K>
+  /** 衝動のキー（この順序）。省略時はオリジナル版の衝動 */
+  keys?: readonly K[]
+  /** レアの演出を抽選に含めるか（レア演出の設定）。省略時は含める */
+  allowRare?: () => boolean
   now?: () => number
   random?: () => number
   createId?: () => string
@@ -64,42 +70,54 @@ export function createVoteId(): string {
   return Array.from(bytes, b => ID_CHARS[b % ID_CHARS.length]).join('')
 }
 
-export function useWorld(options: WorldOptions) {
+/** 地域の分布を持たない対象（函南町版）の、演出の強さを決めるときの地域 */
+const NO_REGIONS = createRegionRecord(() => 0)
+
+export function useWorld(options: WorldOptions<ImpulseKey>): World<ImpulseKey>
+export function useWorld<K extends string>(options: WorldOptions<K> & { keys: readonly K[] }): World<K>
+export function useWorld(options: WorldOptions<string>): World<string> {
   const { source } = options
+  const keys: readonly string[] = options.keys ?? IMPULSE_KEYS
+  const allowRare = options.allowRare ?? (() => true)
   const now = options.now ?? Date.now
   const createId = options.createId ?? createVoteId
   const sleep = options.sleep ?? (ms => new Promise<void>(resolve => setTimeout(resolve, ms)))
 
-  const data = reactive<{ state: WorldState | null, remaining: Remaining, pending: Record<ImpulseKey, PendingVote[]> }>({
+  const data = reactive<{ state: Record<string, TargetImpulseState> | null, remaining: Remaining<string>, pending: Record<string, PendingVote[]> }>({
     state: null,
-    remaining: createImpulseRecord(() => VOTE_LIMIT),
-    pending: createImpulseRecord<PendingVote[]>(() => []),
+    remaining: recordOf(keys, () => VOTE_LIMIT),
+    pending: recordOf<string, PendingVote[]>(keys, () => []),
   })
-  const lotteries = createImpulseRecord(() => createEffectLottery(options.random))
-  const queues = createImpulseRecord<Promise<void>>(() => Promise.resolve())
+  const lotteries = recordOf(keys, () => createEffectLottery(options.random))
+  const queues = recordOf<string, Promise<void>>(keys, () => Promise.resolve())
 
-  const views: Record<ImpulseKey, ComputedRef<ImpulseView>> = createImpulseRecord(key => computed(() => {
+  const views: Record<string, ComputedRef<ImpulseView>> = recordOf(keys, key => computed(() => {
     const s = data.state?.[key]
-    const remaining = data.remaining[key]
+    const remaining = data.remaining[key] ?? 0
+    const pending = data.pending[key] ?? []
     return {
-      count: s ? s.votes + data.pending[key].length : null,
-      visual: s ? visualOf(s.momentum, s.regions) : IDLE_VISUAL,
+      count: s ? s.votes + pending.length : null,
+      visual: s ? visualOf(s.momentum, s.regions ?? NO_REGIONS) : IDLE_VISUAL,
       remaining,
       limitReached: remaining <= 0,
     }
   }))
 
-  function inFlight(key: ImpulseKey): number {
-    return data.pending[key].filter(p => p.acceptedAt === null).length
+  function pendingOf(key: string): PendingVote[] {
+    return data.pending[key] ?? []
+  }
+
+  function inFlight(key: string): number {
+    return pendingOf(key).filter(p => p.acceptedAt === null).length
   }
 
   /** サーバーの残り枠に、まだ送信中の自分の票を差し引いて反映する */
-  function applyRemaining(remaining: Remaining): void {
-    for (const key of IMPULSE_KEYS) data.remaining[key] = Math.max(0, remaining[key] - inFlight(key))
+  function applyRemaining(remaining: Remaining<string>): void {
+    for (const key of keys) data.remaining[key] = Math.max(0, (remaining[key] ?? 0) - inFlight(key))
   }
 
-  function removePending(key: ImpulseKey, id: string): void {
-    data.pending[key] = data.pending[key].filter(p => p.id !== id)
+  function removePending(key: string, id: string): void {
+    data.pending[key] = pendingOf(key).filter(p => p.id !== id)
   }
 
   async function refreshState(): Promise<void> {
@@ -107,8 +125,8 @@ export function useWorld(options: WorldOptions) {
     try {
       const state = await source.fetchState()
       // 取得した集計に含まれているとみなせる自分の票は、足すのをやめる
-      for (const key of IMPULSE_KEYS) {
-        data.pending[key] = data.pending[key].filter(p => p.acceptedAt === null || p.acceptedAt > issuedAt - STATE_FRESHNESS_MS)
+      for (const key of keys) {
+        data.pending[key] = pendingOf(key).filter(p => p.acceptedAt === null || p.acceptedAt > issuedAt - STATE_FRESHNESS_MS)
       }
       data.state = state
     }
@@ -127,7 +145,7 @@ export function useWorld(options: WorldOptions) {
     }
   }
 
-  async function submit(key: ImpulseKey, id: string, region: RegionKey | null): Promise<void> {
+  async function submit(key: string, id: string, region: RegionKey | null): Promise<void> {
     for (let attempt = 0; ; attempt++) {
       try {
         const result = await source.submitVote(key, id, region)
@@ -135,7 +153,7 @@ export function useWorld(options: WorldOptions) {
           removePending(key, id)
         }
         else {
-          const entry = data.pending[key].find(p => p.id === id)
+          const entry = pendingOf(key).find(p => p.id === id)
           if (entry) entry.acceptedAt = now()
         }
         applyRemaining(result.remaining)
@@ -146,7 +164,7 @@ export function useWorld(options: WorldOptions) {
         if (delay === undefined) {
           // 送り直しても確定しなかった票は、静かに戻す
           removePending(key, id)
-          data.remaining[key] = Math.min(VOTE_LIMIT, data.remaining[key] + 1)
+          data.remaining[key] = Math.min(VOTE_LIMIT, (data.remaining[key] ?? 0) + 1)
           return
         }
         await sleep(delay)
@@ -158,26 +176,33 @@ export function useWorld(options: WorldOptions) {
    * 投票する。受け付けたら演出の抽選結果を返し、上限に達していたら null を返す。
    * 送信は衝動ごとに順番に行う（同じセッションの同時送信で、サーバーの楽観的ロックが競合しないように）
    */
-  function vote(key: ImpulseKey): EffectChoice | null {
-    if (data.remaining[key] <= 0) return null
+  function vote(key: string): EffectChoice | null {
+    const remaining = data.remaining[key] ?? 0
+    const lottery = lotteries[key]
+    const queue = queues[key]
+    if (remaining <= 0 || !lottery || !queue) return null
     const id = createId()
     // 押した時点の地方で送る（送り直しでも変えない）
     const region = options.region?.() ?? null
-    data.remaining[key] -= 1
-    data.pending[key].push({ id, acceptedAt: null })
-    queues[key] = queues[key].then(() => submit(key, id, region))
-    return lotteries[key].draw()
+    data.remaining[key] = remaining - 1
+    data.pending[key] = [...pendingOf(key), { id, acceptedAt: null }]
+    queues[key] = queue.then(() => submit(key, id, region))
+    return lottery.draw(allowRare())
   }
 
   /** 送信中の票がすべて終わるまで待つ（テスト用） */
   async function settled(): Promise<void> {
-    await Promise.all(IMPULSE_KEYS.map(key => queues[key]))
+    await Promise.all(keys.map(key => queues[key]))
   }
 
   let stateTimer: ReturnType<typeof setInterval> | undefined
   let remainingTimer: ReturnType<typeof setInterval> | undefined
 
+  let running = false
+
   function start(): void {
+    if (running) return
+    running = true
     void refreshState()
     void refreshRemaining()
     stateTimer = setInterval(() => {
@@ -189,6 +214,7 @@ export function useWorld(options: WorldOptions) {
   }
 
   function stop(): void {
+    running = false
     clearInterval(stateTimer)
     clearInterval(remainingTimer)
   }
@@ -196,6 +222,14 @@ export function useWorld(options: WorldOptions) {
   return { views, vote, start, stop, refreshState, refreshRemaining, settled }
 }
 
-export type World = ReturnType<typeof useWorld>
-
-export const WORLD_KEY: InjectionKey<World> = Symbol('world')
+export interface World<K extends string = ImpulseKey> {
+  views: Record<K, ComputedRef<ImpulseView>>
+  /** 投票する。受け付けたら演出の抽選結果、上限なら null */
+  vote(key: K): EffectChoice | null
+  /** 定期的な取得を始める（表示中の対象だけ動かす） */
+  start(): void
+  stop(): void
+  refreshState(): Promise<void>
+  refreshRemaining(): Promise<void>
+  settled(): Promise<void>
+}

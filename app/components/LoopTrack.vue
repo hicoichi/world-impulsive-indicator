@@ -1,23 +1,25 @@
-<script setup lang="ts">
-// 横スクロールで衝動を切り替える枠。ヘッダー（地域のピル）、PC の矢印、ページドットを持つ。
-// 配置と寸法は UI モック（JpSwipe）の値。ヘッダーの名前は表示しない（docs/frontend-plan.md Q-17）
-import { inject, ref } from 'vue'
-import { IMPULSE_KEYS, IMPULSE_LABELS } from '#shared/domain/impulse'
+<script setup lang="ts" generic="K extends string">
+// 横スクロールで衝動を切り替える枠。PC の矢印、ページドットを持つ。各パネルの中身はスロットで受け取る
+// （オリジナル版と函南町版で同じ枠を使う。docs/frontend-plan.md §5 K5）。
+// 配置と寸法は UI モック（JpSwipe・KnSwipe）の値
+import { computed, ref } from 'vue'
 import { useLoopTrack } from '../composables/useLoopTrack'
-import { REGION_KEY } from '../composables/useRegion'
-import { WORLD_KEY } from '../composables/useWorld'
 import { loopPanels } from '../domain/loop'
-import ImpulseScene from './ImpulseScene.vue'
-import RegionPill from './RegionPill.vue'
 
-const world = inject(WORLD_KEY)
-if (!world) throw new Error('useWorld が provide されていない')
-const region = inject(REGION_KEY)
-if (!region) throw new Error('useRegion が provide されていない')
+const props = defineProps<{
+  /** 衝動のキー（この順序で並べる） */
+  items: readonly K[]
+  /** ドットの読み上げに使う衝動名 */
+  labels: Record<K, string>
+}>()
+
+defineSlots<{
+  panel(props: { item: K, clone: boolean }): unknown
+}>()
 
 const track = ref<HTMLElement | null>(null)
-const panels = loopPanels(IMPULSE_KEYS)
-const { current, go, goTo, onScroll, onWheel, onKeydown } = useLoopTrack(track, { count: IMPULSE_KEYS.length })
+const panels = computed(() => loopPanels(props.items))
+const { current, go, goTo, onScroll, onWheel, onKeydown } = useLoopTrack(track, { count: props.items.length })
 </script>
 
 <template>
@@ -44,23 +46,13 @@ const { current, go, goTo, onScroll, onWheel, onKeydown } = useLoopTrack(track, 
         :aria-hidden="panel.clone || panel.index !== current"
         :inert="panel.clone || panel.index !== current"
       >
-        <ImpulseScene
-          :impulse="panel.item"
-          :view="world.views[panel.item].value"
+        <slot
+          name="panel"
+          :item="panel.item"
           :clone="panel.clone"
-          :origin-region="region.region.value"
-          :vote="() => world.vote(panel.item)"
         />
       </div>
     </div>
-
-    <header class="head">
-      <RegionPill
-        :region="region.region.value"
-        :status="region.status.value"
-        @toggle="region.toggle()"
-      />
-    </header>
 
     <button
       type="button"
@@ -104,12 +96,12 @@ const { current, go, goTo, onScroll, onWheel, onKeydown } = useLoopTrack(track, 
       aria-label="衝動の切り替え"
     >
       <button
-        v-for="(key, index) in IMPULSE_KEYS"
+        v-for="(key, index) in items"
         :key="key"
         type="button"
         class="dot"
         :class="{ on: index === current }"
-        :aria-label="`${IMPULSE_LABELS[key]} へ移動`"
+        :aria-label="`${labels[key]} へ移動`"
         :aria-current="index === current ? 'true' : undefined"
         @click="goTo(index)"
       >
@@ -157,21 +149,6 @@ const { current, go, goTo, onScroll, onWheel, onKeydown } = useLoopTrack(track, 
   scroll-snap-align: center;
   scroll-snap-stop: always;
   overflow: hidden;
-}
-
-.head {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 56px;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  padding: 0 16px;
-  box-sizing: border-box;
-  z-index: 8;
-  pointer-events: none;
 }
 
 .dots {
@@ -248,11 +225,6 @@ const { current, go, goTo, onScroll, onWheel, onKeydown } = useLoopTrack(track, 
 
 /* PC（UI モックの「幅 900 以上かつ高さ 520 以上」） */
 @media (min-width: 900px) and (min-height: 520px) {
-  .head {
-    height: 64px;
-    padding: 0 28px;
-  }
-
   .arrow {
     display: flex;
   }

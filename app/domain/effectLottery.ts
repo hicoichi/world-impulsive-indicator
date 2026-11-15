@@ -15,8 +15,9 @@ export type EffectChoice = { kind: 'normal', index: number } | { kind: 'rare' }
 export function createEffectLottery(random: () => number = Math.random) {
   let last = -1
   return {
-    draw(): EffectChoice {
-      if (random() < RARE_RATE) return { kind: 'rare' }
+    /** allowRare が false（レア演出 OFF の設定）ならレアを選ばない。通常の演出はそのまま */
+    draw(allowRare = true): EffectChoice {
+      if (allowRare && random() < RARE_RATE) return { kind: 'rare' }
       let index = Math.floor(random() * NORMAL_EFFECT_COUNT)
       if (index === last) index = (index + 1 + Math.floor(random() * (NORMAL_EFFECT_COUNT - 1))) % NORMAL_EFFECT_COUNT
       last = index

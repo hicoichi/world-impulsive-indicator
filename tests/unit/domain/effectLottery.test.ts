@@ -39,3 +39,18 @@ describe('演出の抽選', () => {
     }
   })
 })
+
+describe('レア演出 OFF（拡張 USM S1-05）', () => {
+  test('レアを選ばず、通常の演出だけを選ぶ', () => {
+    // レアの確率の内側の乱数でも、通常の演出になる
+    const lottery = createEffectLottery(sequence([0, 0.5]))
+    for (let i = 0; i < 20; i++) expect(lottery.draw(false).kind).toBe('normal')
+  })
+
+  test('OFF でも直前と同じ通常の演出は選ばない', () => {
+    const lottery = createEffectLottery(sequence([0.1, 0.1, 0.4]))
+    const first = lottery.draw(false)
+    const second = lottery.draw(false)
+    expect(second).not.toEqual(first)
+  })
+})

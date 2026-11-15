@@ -6,8 +6,6 @@
 
 import type { ImpulseKey } from '#shared/domain/impulse'
 import type { RegionKey } from '#shared/domain/region'
-import type { EffectChoice } from '../domain/effectLottery'
-import type { ImpulseVisual } from '../domain/visualState'
 import { glow as drawGlow, sprite, stars } from './draw'
 import { ANCHORS, geography, ORIGIN, type Anchor, type LandParticle } from './geo'
 import { clamp, D2R, easeOut, rnd, TAU, type RGB, type Vec3 } from './math'
@@ -15,6 +13,7 @@ import { createScheduler, trimEffects } from './scheduler'
 import { createExodusMode } from './modes/exodus'
 import { createFestivalMode } from './modes/festival'
 import { createIkkiMode } from './modes/ikki'
+import type { SceneEngine, SceneEngineOptions } from './sceneEngine'
 import { subscribeFrame } from './ticker'
 
 export interface Projected {
@@ -98,25 +97,13 @@ export interface Mode {
   rare(): void
 }
 
-export interface EngineOptions {
-  canvas: HTMLCanvasElement
-  /** 画面全体の要素（大きさの基準） */
-  root: HTMLElement
-  /** 地球を描く範囲の要素 */
-  stage: HTMLElement
+export interface EngineOptions extends SceneEngineOptions {
   impulse: ImpulseKey
-  /** 日本の粒子が集まってくる初回の演出をするか（端の複製ではしない） */
-  intro: boolean
-  reducedMotion: boolean
 }
 
-export interface Engine {
-  setVisual(visual: ImpulseVisual): void
+export interface Engine extends SceneEngine {
   /** 演出の起点を現在地の地方にする。null なら東京（docs/frontend-plan.md §2.2） */
   setOrigin(region: RegionKey | null): void
-  play(choice: EffectChoice): void
-  setReducedMotion(value: boolean): void
-  destroy(): void
 }
 
 const ACCENTS: Record<ImpulseKey, [RGB, RGB]> = {

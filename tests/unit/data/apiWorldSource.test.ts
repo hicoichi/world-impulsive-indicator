@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from 'vitest'
 import { createApiWorldSource, SESSION_TOKEN_HEADER, type TokenStorage } from '../../../app/data/apiWorldSource'
+import { KANNAMI_IMPULSE_KEYS } from '#shared/domain/target'
 
 const BASE = 'https://api.example.test/'
 const regions = { hokkaido: 0, tohoku: 0, kanto: 1, chubu: 0, kinki: 0, chugoku: 0, shikoku: 0, kyushu: 0, unknown: 0 }
@@ -114,5 +115,60 @@ describe('World API のクライアント', () => {
     const { source, calls } = setup(() => json(200, { result: 'accepted', token: 't', remaining: FULL }), 't')
     await source.submitVote('exodus', 'v1', 'kyushu')
     expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({ impulse: 'exodus', voteId: 'v1', region: 'kyushu' })
+  })
+})
+
+describe('World API のクライアント（函南町版。docs/world-api-design.md §8）', () => {
+  const KANNAMI_STATE = { target: 'kannami', impulses: { ikki: { votes: 2, momentum: 1.5 }, pack: { votes: 0, momentum: 0 }, settle: { votes: 5, momentum: 3 } } }
+  const KANNAMI_FULL = { ikki: 100, pack: 100, settle: 100 }
+
+  function setupKannami(handler: Handler, token: string | null = null) {
+    const calls: { url: string, init?: RequestInit }[] = []
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input)
+      calls.push({ url, init })
+      return handler(url, init)
+    })
+    const storage = memoryStorage(token)
+    const source = createApiWorldSource({ baseUrl: BASE, target: 'kannami', keys: KANNAMI_IMPULSE_KEYS, fetch: fetchMock, storage })
+    return { source, calls, storage }
+  }
+
+  test('集計は ?target=kannami で取得し、地域の分布なしで読める', async () => {
+    const { source, calls } = setupKannami(() => json(200, KANNAMI_STATE))
+    const state = await source.fetchState()
+    expect(calls[0]?.url).toBe('https://api.example.test/v1/state?target=kannami')
+    expect(state).toEqual({ ikki: { votes: 2, momentum: 1.5 }, pack: { votes: 0, momentum: 0 }, settle: { votes: 5, momentum: 3 } })
+  })
+
+  test('オリジナル版の衝動の応答は、函南町版としては不正', async () => {
+    const { source } = setupKannami(() => json(200, STATE))
+    await expect(source.fetchState()).rejects.toThrow()
+  })
+
+  test('投票の本文に target を付け、地方は渡されても送らない', async () => {
+    const { source, calls } = setupKannami(() => json(200, { result: 'accepted', token: 't', remaining: { ...KANNAMI_FULL, pack: 99 } }), 'tok')
+    const result = await source.submitVote('pack', 'v1', 'kanto')
+    expect(result).toEqual({ status: 'accepted', remaining: { ...KANNAMI_FULL, pack: 99 } })
+    expect(calls[0]?.url).toBe('https://api.example.test/v1/votes')
+    expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({ impulse: 'pack', voteId: 'v1', target: 'kannami' })
+  })
+
+  test('残り枠・セッションの発行も ?target=kannami で呼ぶ', async () => {
+    const { source, calls } = setupKannami((url) => {
+      if (url.includes('/v1/sessions?')) return json(201, { token: 'new', remaining: KANNAMI_FULL })
+      if (url.includes('/v1/sessions/me')) return json(200, { token: 'r', remaining: KANNAMI_FULL })
+      return json(200, { result: 'accepted', token: 't', remaining: KANNAMI_FULL })
+    })
+    await source.submitVote('ikki', 'v1', null)
+    expect(calls[0]?.url).toBe('https://api.example.test/v1/sessions?target=kannami')
+    expect(await source.fetchRemaining()).toEqual(KANNAMI_FULL)
+    expect(calls.at(-1)?.url).toBe('https://api.example.test/v1/sessions/me?target=kannami')
+  })
+
+  test('オリジナル版は対象を付けずに呼ぶ（今までと同じ URL・本文）', async () => {
+    const { source, calls } = setup(() => json(200, { result: 'accepted', token: 't', remaining: FULL }), 'tok')
+    await source.submitVote('ikki', 'v1', 'kanto')
+    expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({ impulse: 'ikki', voteId: 'v1', region: 'kanto' })
   })
 })

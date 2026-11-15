@@ -1,19 +1,22 @@
 <script setup lang="ts">
-// 1つの衝動の画面：地球と演出（canvas）、見出し・衝動名・集計数、投票ボタン。
-// 配置・寸法・投票時の手応え（ポップ・フラッシュ・揺れ・振動）は UI モック（JpScene）の値
+// 1つの衝動の画面：主役の描画（canvas）、見出し・衝動名・集計数、投票ボタン。
+// オリジナル版（地球）と函南町版で同じ画面を使い、描画エンジンだけを差し替える（createEngine）。
+// 配置・寸法・投票時の手応え（ポップ・フラッシュ・揺れ・振動）は UI モック（JpScene・KnScene）の値
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { IMPULSE_LABELS, type ImpulseKey } from '#shared/domain/impulse'
 import type { RegionKey } from '#shared/domain/region'
 import type { ImpulseView } from '../composables/useWorld'
 import { useReducedMotion } from '../composables/useReducedMotion'
 import type { EffectChoice } from '../domain/effectLottery'
-import { IMPULSE_THEMES } from '../domain/impulseTheme'
-import { createEngine, type Engine } from '../visuals/stage'
-import ImpulseIcon from './ImpulseIcon.vue'
+import type { ImpulseTheme } from '../domain/impulseTheme'
+import type { SceneEngine, SceneEngineFactory } from '../visuals/sceneEngine'
 
 const props = defineProps<{
-  impulse: ImpulseKey
+  /** 衝動名（見出し・ボタンの文言） */
+  label: string
+  theme: ImpulseTheme
   view: ImpulseView
+  /** 描画エンジンを作る。描画できない環境では例外を投げる */
+  createEngine: SceneEngineFactory
   /** ループの端の複製。初回の演出をせず、操作も受けない */
   clone?: boolean
   /** 演出の起点にする現在地の地方。位置情報を使わないときは null */
@@ -22,15 +25,19 @@ const props = defineProps<{
   vote: () => EffectChoice | null
 }>()
 
-const label = computed(() => IMPULSE_LABELS[props.impulse])
-const theme = computed(() => IMPULSE_THEMES[props.impulse])
+defineSlots<{
+  /** 投票ボタンのアイコン */
+  icon(): unknown
+}>()
+
+const theme = computed(() => props.theme)
 const countText = computed(() => (props.view.count === null ? '—' : props.view.count.toLocaleString('ja-JP')))
 
 const root = ref<HTMLElement | null>(null)
 const canvas = ref<HTMLCanvasElement | null>(null)
 const stage = ref<HTMLElement | null>(null)
 const reducedMotion = useReducedMotion()
-let engine: Engine | null = null
+let engine: SceneEngine | null = null
 
 // 同じアニメーションを続けて起こせるよう、A と B を交互に付け替える（UI モックと同じ方式）
 const pop = ref<0 | 1 | 2>(0)
@@ -72,25 +79,24 @@ function onVote(): void {
 onMounted(() => {
   if (!canvas.value || !root.value || !stage.value) return
   try {
-    engine = createEngine({
+    engine = props.createEngine({
       canvas: canvas.value,
       root: root.value,
       stage: stage.value,
-      impulse: props.impulse,
       intro: !props.clone,
       reducedMotion: reducedMotion.value,
     })
     engine.setVisual(props.view.visual)
-    engine.setOrigin(props.originRegion ?? null)
+    engine.setOrigin?.(props.originRegion ?? null)
   }
   catch (error) {
     // 描画できなくても、数字と投票は使えるようにする
-    console.warn('地球を描画できない', error)
+    console.warn('画面を描画できない', error)
   }
 })
 
 watch(() => props.view.visual, visual => engine?.setVisual(visual))
-watch(() => props.originRegion, region => engine?.setOrigin(region ?? null))
+watch(() => props.originRegion, region => engine?.setOrigin?.(region ?? null))
 watch(reducedMotion, value => engine?.setReducedMotion(value))
 onBeforeUnmount(() => engine?.destroy())
 </script>
@@ -103,7 +109,7 @@ onBeforeUnmount(() => engine?.destroy())
     :style="style"
     :aria-label="label"
   >
-    <!-- 地球と演出の描画先。装飾なので読み上げない -->
+    <!-- 主役と演出の描画先。装飾なので読み上げない -->
     <canvas
       ref="canvas"
       class="canvas"
@@ -141,7 +147,7 @@ onBeforeUnmount(() => engine?.destroy())
         :aria-disabled="view.limitReached || undefined"
         @click="onVote"
       >
-        <ImpulseIcon :impulse="impulse" />
+        <slot name="icon" />
         <span>{{ label }}</span>
       </button>
     </div>

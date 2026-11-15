@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { createImpulseRecord } from '#shared/domain/impulse'
 import { createRegionRecord } from '#shared/domain/region'
+import { KANNAMI_IMPULSE_KEYS, type KannamiImpulseKey } from '#shared/domain/target'
 import { VOTE_LIMIT } from '#shared/domain/vote'
 import type { WorldState } from '#shared/domain/worldState'
-import { createVoteId, STATE_FRESHNESS_MS, useWorld, VOTE_ID_LENGTH } from '../../../app/composables/useWorld'
+import { createVoteId, STATE_FRESHNESS_MS, STATE_POLL_MS, useWorld, VOTE_ID_LENGTH } from '../../../app/composables/useWorld'
 import type { Remaining, SubmitResult, WorldSource } from '../../../app/data/worldSource'
 
 const FULL: Remaining = { ikki: VOTE_LIMIT, exodus: VOTE_LIMIT, festival: VOTE_LIMIT }
@@ -177,5 +178,59 @@ describe('useWorld', () => {
     expect(world.views.ikki.value.visual.activity).toBe(0)
     await world.refreshState()
     expect(world.views.ikki.value.visual.activity).toBeGreaterThan(0)
+  })
+})
+
+describe('useWorld（函南町版・レア演出の設定）', () => {
+  class KannamiSource implements WorldSource<KannamiImpulseKey> {
+    remaining: Remaining<KannamiImpulseKey> = { ikki: VOTE_LIMIT, pack: VOTE_LIMIT, settle: VOTE_LIMIT }
+    submitted: string[] = []
+    async fetchState() {
+      return { ikki: { votes: 5, momentum: 5 }, pack: { votes: 0, momentum: 0 }, settle: { votes: 2, momentum: 2 } }
+    }
+
+    async fetchRemaining() {
+      return { ...this.remaining }
+    }
+
+    async submitVote(impulse: KannamiImpulseKey, voteId: string): Promise<SubmitResult<KannamiImpulseKey>> {
+      this.submitted.push(`${impulse}:${voteId}`)
+      this.remaining = { ...this.remaining, [impulse]: this.remaining[impulse] - 1 }
+      return { status: 'accepted', remaining: { ...this.remaining } }
+    }
+  }
+
+  test('対象の衝動だけを扱い、地域の分布がなくても演出の強さを決める', async () => {
+    const source = new KannamiSource()
+    const kannami = useWorld({ source, keys: KANNAMI_IMPULSE_KEYS, random: () => 0.5, createId: () => 'k1', sleep: async () => {} })
+    await kannami.refreshState()
+    expect(Object.keys(kannami.views)).toEqual(['ikki', 'pack', 'settle'])
+    expect(kannami.views.ikki.value.count).toBe(5)
+    expect(kannami.views.ikki.value.visual.activity).toBeGreaterThan(0)
+    expect(kannami.views.pack.value.visual.activity).toBe(0)
+    kannami.vote('pack')
+    await kannami.settled()
+    expect(source.submitted).toEqual(['pack:k1'])
+    expect(kannami.views.pack.value.remaining).toBe(VOTE_LIMIT - 1)
+  })
+
+  test('レア演出が OFF ならレアを返さない（乱数がレアの範囲でも）', async () => {
+    let allow = false
+    const world = useWorld({ source: new FakeSource(), random: () => 0, createId: () => `v${Math.random()}`, sleep: async () => {}, allowRare: () => allow })
+    expect(world.vote('ikki')?.kind).toBe('normal')
+    allow = true
+    expect(world.vote('ikki')?.kind).toBe('rare')
+  })
+
+  test('start を2回呼んでも、取得は重ならない', async () => {
+    vi.useFakeTimers()
+    const source = new FakeSource()
+    const fetchState = vi.spyOn(source, 'fetchState')
+    const world = useWorld({ source, sleep: async () => {} })
+    world.start()
+    world.start()
+    await vi.advanceTimersByTimeAsync(STATE_POLL_MS)
+    expect(fetchState).toHaveBeenCalledTimes(2)
+    world.stop()
   })
 })

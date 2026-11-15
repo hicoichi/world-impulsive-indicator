@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { emptyImpulseState, parseWorldState } from '#shared/domain/worldState'
+import { emptyImpulseState, parseTargetState, parseWorldState } from '#shared/domain/worldState'
 
 const regions = { hokkaido: 0, tohoku: 0, kanto: 1.5, chubu: 0, kinki: 0, chugoku: 0, shikoku: 0, kyushu: 0, unknown: 2 }
 const valid = {
@@ -34,5 +34,31 @@ describe('parseWorldState', () => {
 
   test('空の状態', () => {
     expect(emptyImpulseState().votes).toBe(0)
+  })
+})
+
+describe('parseTargetState（評価対象ごと。docs/world-api-design.md §8）', () => {
+  const keys = ['ikki', 'pack', 'settle'] as const
+  const kannami = { impulses: { ikki: { votes: 1, momentum: 1 }, pack: { votes: 0, momentum: 0 }, settle: { votes: 2, momentum: 1.4 } } }
+
+  test('地域の分布なしで読める', () => {
+    expect(parseTargetState(kannami, keys, false)).toEqual(kannami.impulses)
+  })
+
+  test('衝動が欠けていれば null', () => {
+    expect(parseTargetState({ impulses: { ikki: { votes: 1, momentum: 1 } } }, keys, false)).toBeNull()
+  })
+
+  test('地域の分布が必須の対象で、分布がなければ null', () => {
+    expect(parseTargetState(kannami, keys, true)).toBeNull()
+  })
+
+  test('オリジナル版の応答は、地域の分布つきで読める', () => {
+    expect(parseTargetState(valid, ['ikki', 'exodus', 'festival'], true)?.ikki).toEqual({ votes: 3, momentum: 3.5, regions })
+  })
+
+  test('負の値は 0 に丸める', () => {
+    const negative = { impulses: { ...kannami.impulses, ikki: { votes: -5, momentum: -1 } } }
+    expect(parseTargetState(negative, keys, false)?.ikki).toEqual({ votes: 0, momentum: 0 })
   })
 })
