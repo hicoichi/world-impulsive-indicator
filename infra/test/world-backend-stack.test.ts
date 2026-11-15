@@ -138,7 +138,7 @@ describe('CloudFront', () => {
         ParametersInCacheKeyAndForwardedToOrigin: Match.objectLike({
           HeadersConfig: { HeaderBehavior: 'whitelist', Headers: ['Origin'] },
           CookiesConfig: { CookieBehavior: 'none' },
-          QueryStringsConfig: { QueryStringBehavior: 'none' },
+          QueryStringsConfig: { QueryStringBehavior: 'whitelist', QueryStrings: ['target'] },
         }),
       }),
     })

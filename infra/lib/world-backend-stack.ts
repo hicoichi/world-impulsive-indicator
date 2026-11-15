@@ -140,7 +140,8 @@ export class WorldBackendStack extends cdk.Stack {
       maxTtl: cdk.Duration.seconds(STATE_CACHE_SECONDS),
       // CORS の応答は Origin ヘッダーで変わるため、キャッシュを分ける
       headerBehavior: cloudfront.CacheHeaderBehavior.allowList('Origin'),
-      queryStringBehavior: cloudfront.CacheQueryStringBehavior.none(),
+      // 評価対象（?target=）ごとに集計が違うため、キャッシュを分ける。他のクエリはキャッシュキーに含めない（docs/world-api-design.md §8.4）
+      queryStringBehavior: cloudfront.CacheQueryStringBehavior.allowList('target'),
       cookieBehavior: cloudfront.CacheCookieBehavior.none(),
       enableAcceptEncodingGzip: true,
       enableAcceptEncodingBrotli: true,

@@ -6,10 +6,13 @@
 // | POST /v1/sessions      | なし               | 匿名セッションの発行                           |
 // | GET /v1/sessions/me    | X-Session-Token    | 残り投票枠。トークンを延長して返す              |
 // | POST /v1/votes         | X-Session-Token    | 投票（地域は任意）。トークンを延長して返す       |
+//
+// 評価対象（target）は GET ではクエリ `?target=`、投票では本文の `target` で受け取る。
+// 省略時はオリジナル版（world）で、対象を足す前と同じ応答になる（docs/world-api-design.md §8.4）。
 
 import type { APIGatewayProxyEventV2, APIGatewayProxyStructuredResultV2 } from 'aws-lambda'
-import { createImpulseRecord, isImpulseKey, type ImpulseKey } from '../../../shared/domain/impulse'
 import { isRegionKey, UNKNOWN_REGION, type RegionBucket } from '../../../shared/domain/region'
+import { createTargetImpulseRecord, DEFAULT_TARGET, isImpulseOf, isTargetKey, TARGETS, type TargetKey } from '../../../shared/domain/target'
 import { VOTE_LIMIT } from '../../../shared/domain/vote'
 import { createSessionId, renewSession, verifySession } from './session-token'
 import { castVote, getRemaining, getState, type VoteServiceDeps } from './vote-service'
@@ -33,9 +36,11 @@ export interface ApiDeps extends VoteServiceDeps {
 type Response = APIGatewayProxyStructuredResultV2
 
 interface VoteBody {
-  impulse: ImpulseKey
+  target: TargetKey
+  impulse: string
   voteId: string
-  region: RegionBucket
+  /** 位置情報を使わない対象では null */
+  region: RegionBucket | null
 }
 
 function json(statusCode: number, body: unknown, cacheControl = 'no-store'): Response {
@@ -50,10 +55,25 @@ function error(statusCode: number, code: string): Response {
   return json(statusCode, { error: code })
 }
 
-/** 地域は省略（または null）なら「不明」に集計する。知らないコードは拒否する */
-function parseRegion(value: unknown): RegionBucket | null {
-  if (value === undefined || value === null) return UNKNOWN_REGION
-  return isRegionKey(value) ? value : null
+/** 対象は省略なら既定（world）。知らない対象は undefined（拒否） */
+function parseTarget(value: unknown): TargetKey | undefined {
+  if (value === undefined || value === null) return DEFAULT_TARGET
+  return isTargetKey(value) ? value : undefined
+}
+
+/**
+ * 地域は省略（または null）なら「不明」に集計する。知らないコードは拒否する（undefined）。
+ * 位置情報を使わない対象では地域を受け取らない（null）。値が送られてきたら拒否する
+ */
+function parseRegion(target: TargetKey, value: unknown): RegionBucket | null | undefined {
+  const absent = value === undefined || value === null
+  if (!TARGETS[target].usesRegion) return absent ? null : undefined
+  if (absent) return UNKNOWN_REGION
+  return isRegionKey(value) ? value : undefined
+}
+
+function targetOfQuery(event: APIGatewayProxyEventV2): TargetKey | undefined {
+  return parseTarget(event.queryStringParameters?.target)
 }
 
 function parseVoteBody(event: APIGatewayProxyEventV2): VoteBody | null {
@@ -63,11 +83,13 @@ function parseVoteBody(event: APIGatewayProxyEventV2): VoteBody | null {
   try {
     const value: unknown = JSON.parse(raw)
     if (typeof value !== 'object' || value === null) return null
-    const { impulse, voteId, region } = value as Record<string, unknown>
-    if (!isImpulseKey(impulse) || typeof voteId !== 'string' || !VOTE_ID_PATTERN.test(voteId)) return null
-    const parsedRegion = parseRegion(region)
-    if (!parsedRegion) return null
-    return { impulse, voteId, region: parsedRegion }
+    const { target, impulse, voteId, region } = value as Record<string, unknown>
+    const parsedTarget = parseTarget(target)
+    if (!parsedTarget) return null
+    if (!isImpulseOf(parsedTarget, impulse) || typeof voteId !== 'string' || !VOTE_ID_PATTERN.test(voteId)) return null
+    const parsedRegion = parseRegion(parsedTarget, region)
+    if (parsedRegion === undefined) return null
+    return { target: parsedTarget, impulse, voteId, region: parsedRegion }
   }
   catch {
     return null
@@ -83,20 +105,26 @@ async function authenticate(event: APIGatewayProxyEventV2, deps: ApiDeps): Promi
 async function route(event: APIGatewayProxyEventV2, deps: ApiDeps): Promise<Response> {
   switch (event.routeKey) {
     case 'GET /v1/state': {
-      const impulses = await getState(deps)
-      return json(200, { impulses }, `public, max-age=${STATE_MAX_AGE_SECONDS}`)
+      const target = targetOfQuery(event)
+      if (!target) return error(400, 'invalid_request')
+      const impulses = await getState(deps, target)
+      return json(200, { target, impulses }, `public, max-age=${STATE_MAX_AGE_SECONDS}`)
     }
     case 'POST /v1/sessions': {
+      const target = targetOfQuery(event)
+      if (!target) return error(400, 'invalid_request')
       const key = await deps.signingKey()
       const sid = createSessionId()
       // 新しいセッションには記録がないため、残り枠は読まずに上限いっぱいで返す
-      const remaining = createImpulseRecord(() => VOTE_LIMIT)
+      const remaining = createTargetImpulseRecord(target, () => VOTE_LIMIT)
       return json(201, { token: renewSession(sid, deps.now(), key), remaining })
     }
     case 'GET /v1/sessions/me': {
+      const target = targetOfQuery(event)
+      if (!target) return error(400, 'invalid_request')
       const session = await authenticate(event, deps)
       if (!session) return error(401, 'invalid_session')
-      const remaining = await getRemaining(deps, session.sid)
+      const remaining = await getRemaining(deps, session.sid, target)
       return json(200, { token: renewSession(session.sid, deps.now(), session.key), remaining })
     }
     case 'POST /v1/votes': {
@@ -104,7 +132,7 @@ async function route(event: APIGatewayProxyEventV2, deps: ApiDeps): Promise<Resp
       if (!session) return error(401, 'invalid_session')
       const body = parseVoteBody(event)
       if (!body) return error(400, 'invalid_request')
-      const result = await castVote(deps, session.sid, body.impulse, body.voteId, body.region)
+      const result = await castVote(deps, session.sid, body.target, body.impulse, body.voteId, body.region)
       const token = renewSession(session.sid, deps.now(), session.key)
       if (result.status === 'limit') {
         return json(409, { error: 'limit', token, remaining: result.remaining })

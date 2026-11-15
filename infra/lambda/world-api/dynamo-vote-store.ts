@@ -1,18 +1,21 @@
 // DynamoDB による VoteStore の実装。1つのテーブルに集計とセッションの記録を持つ
 //
-// | 種類         | pk                 | sk                  | 属性                                                         |
-// |--------------|--------------------|---------------------|--------------------------------------------------------------|
-// | 集計の枠     | COUNT#<衝動>       | B#<枠の開始時刻>    | votes（票数）、momentum（寄与度）、r_<地域>（地域ごとの寄与度）、expiresAt |
-// | セッション   | SESSION#<ID>       | IMPULSE#<衝動>      | packed（投票記録を詰めた文字列。packed-votes.ts）、version、expiresAt |
+// | 種類         | pk                          | sk                           | 属性                                                         |
+// |--------------|-----------------------------|------------------------------|--------------------------------------------------------------|
+// | 集計の枠     | COUNT#[<対象>#]<衝動>       | B#<枠の開始時刻>             | votes（票数）、momentum（寄与度）、r_<地域>（地域ごとの寄与度）、expiresAt |
+// | セッション   | SESSION#<ID>                | IMPULSE#[<対象>#]<衝動>      | packed（投票記録を詰めた文字列。packed-votes.ts）、version、expiresAt |
 //
+// オリジナル版（world）のキーには対象を入れない。対象を足す前（2026-11-15 以前）のデータをそのまま使うため
+// （docs/world-api-design.md §8.3）。それ以外の対象は `<対象>#` を前に付ける。
 // 寄与度は CONTRIBUTION_SCALE 倍の整数。地域は集計の枠にだけ加算し、セッションの記録には持たない。
+// 位置情報を使わない対象（函南町版）は r_<地域> を書かない。
 // 投票記録は以前、票ごとのマップのリスト（votes）で持っていた。古い形の項目も読めるようにしている
 // （TTL で12時間後に消えるため、2026-11-02 以降は不要になる）
 
 import { TransactionCanceledException } from '@aws-sdk/client-dynamodb'
 import { QueryCommand, TransactWriteCommand, type DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb'
-import { createImpulseRecord, isImpulseKey, type ImpulseKey } from '../../../shared/domain/impulse'
 import { createRegionRecord, type RegionBucket } from '../../../shared/domain/region'
+import { createTargetImpulseRecord, DEFAULT_TARGET, type TargetKey } from '../../../shared/domain/target'
 import type { CastVote } from '../../../shared/domain/vote'
 import { packVotes, unpackVotes } from './packed-votes'
 import type { BucketTotals, CommitVoteInput, CommitVoteResult, SessionVotes, VoteStore } from './vote-store'
@@ -20,8 +23,13 @@ import type { BucketTotals, CommitVoteInput, CommitVoteResult, SessionVotes, Vot
 /** 枠の開始時刻を文字列で並べ替えられるよう、桁をそろえる */
 const BUCKET_KEY_DIGITS = 15
 
-export function countKey(impulse: ImpulseKey): string {
-  return `COUNT#${impulse}`
+/** オリジナル版は対象を付けない（既存のキーのまま）。それ以外は `<対象>#<衝動>` */
+function scoped(target: TargetKey, impulse: string): string {
+  return target === DEFAULT_TARGET ? impulse : `${target}#${impulse}`
+}
+
+export function countKey(target: TargetKey, impulse: string): string {
+  return `COUNT#${scoped(target, impulse)}`
 }
 
 export function bucketKey(start: number): string {
@@ -32,8 +40,8 @@ export function sessionKey(sid: string): string {
   return `SESSION#${sid}`
 }
 
-export function impulseKey(impulse: ImpulseKey): string {
-  return `IMPULSE#${impulse}`
+export function impulseKey(target: TargetKey, impulse: string): string {
+  return `IMPULSE#${scoped(target, impulse)}`
 }
 
 export function regionAttribute(region: RegionBucket): string {
@@ -48,14 +56,27 @@ function toCastVotes(value: unknown): CastVote[] {
     && typeof (vote as CastVote).id === 'string' && typeof (vote as CastVote).at === 'number')
 }
 
+/** 集計の枠の加算式。地域がなければ（位置情報を使わない対象）地域の属性を書かない */
+function bucketUpdate(region: RegionBucket | null): { UpdateExpression: string, ExpressionAttributeNames?: Record<string, string> } {
+  if (region === null) {
+    return { UpdateExpression: 'ADD votes :one, momentum :units SET expiresAt = if_not_exists(expiresAt, :expiresAt)' }
+  }
+  return {
+    UpdateExpression: 'ADD votes :one, momentum :units, #region :units SET expiresAt = if_not_exists(expiresAt, :expiresAt)',
+    ExpressionAttributeNames: { '#region': regionAttribute(region) },
+  }
+}
+
 function numberOf(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0
 }
 
 export function createDynamoVoteStore(client: DynamoDBDocumentClient, tableName: string): VoteStore {
   return {
-    async getSessionVotes(sid) {
-      const result = createImpulseRecord<SessionVotes>(() => ({ votes: [], version: 0 }))
+    async getSessionVotes(sid, target) {
+      const result = createTargetImpulseRecord<SessionVotes>(target, () => ({ votes: [], version: 0 }))
+      // sk から、この対象の衝動を引く（別の対象の記録は読み飛ばす）
+      const impulseBySortKey = new Map(Object.keys(result).map(impulse => [impulseKey(target, impulse), impulse]))
       const response = await client.send(new QueryCommand({
         TableName: tableName,
         KeyConditionExpression: 'pk = :pk',
@@ -63,8 +84,8 @@ export function createDynamoVoteStore(client: DynamoDBDocumentClient, tableName:
         ConsistentRead: true,
       }))
       for (const item of response.Items ?? []) {
-        const impulse = String(item.sk).replace(/^IMPULSE#/, '')
-        if (!isImpulseKey(impulse)) continue
+        const impulse = impulseBySortKey.get(String(item.sk))
+        if (impulse === undefined) continue
         result[impulse] = {
           votes: typeof item.packed === 'string' ? unpackVotes(item.packed) : toCastVotes(item.votes),
           version: typeof item.version === 'number' ? item.version : 0,
@@ -83,7 +104,7 @@ export function createDynamoVoteStore(client: DynamoDBDocumentClient, tableName:
                 TableName: tableName,
                 Item: {
                   pk: sessionKey(input.sid),
-                  sk: impulseKey(input.impulse),
+                  sk: impulseKey(input.target, input.impulse),
                   packed: packVotes(input.votes),
                   version: input.expectedVersion + 1,
                   expiresAt: input.sessionExpiresAt,
@@ -96,9 +117,8 @@ export function createDynamoVoteStore(client: DynamoDBDocumentClient, tableName:
             {
               Update: {
                 TableName: tableName,
-                Key: { pk: countKey(input.impulse), sk: bucketKey(input.bucketStart) },
-                UpdateExpression: 'ADD votes :one, momentum :units, #region :units SET expiresAt = if_not_exists(expiresAt, :expiresAt)',
-                ExpressionAttributeNames: { '#region': regionAttribute(input.region) },
+                Key: { pk: countKey(input.target, input.impulse), sk: bucketKey(input.bucketStart) },
+                ...bucketUpdate(input.region),
                 ExpressionAttributeValues: { ':one': 1, ':units': input.contributionUnits, ':expiresAt': input.bucketExpiresAt },
               },
             },
@@ -114,14 +134,14 @@ export function createDynamoVoteStore(client: DynamoDBDocumentClient, tableName:
       }
     },
 
-    async sumBuckets(impulse, fromBucket) {
+    async sumBuckets(target, impulse, fromBucket) {
       const totals: BucketTotals = { votes: 0, contributionUnits: 0, regionUnits: createRegionRecord(() => 0) }
       let startKey: Record<string, unknown> | undefined
       do {
         const response = await client.send(new QueryCommand({
           TableName: tableName,
           KeyConditionExpression: 'pk = :pk AND sk >= :from',
-          ExpressionAttributeValues: { ':pk': countKey(impulse), ':from': bucketKey(fromBucket) },
+          ExpressionAttributeValues: { ':pk': countKey(target, impulse), ':from': bucketKey(fromBucket) },
           ExclusiveStartKey: startKey,
         }))
         for (const item of response.Items ?? []) {

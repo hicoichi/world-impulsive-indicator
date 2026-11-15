@@ -5,6 +5,7 @@ import type { CommitVoteInput } from '../../lambda/world-api/vote-store'
 
 const INPUT: CommitVoteInput = {
   sid: 'AAAAAAAAAAAAAAAAAAAAAA',
+  target: 'world',
   impulse: 'ikki',
   votes: [{ id: 'v1', at: 1_800_000_000_000 }],
   expectedVersion: 0,
@@ -71,7 +72,7 @@ describe('DynamoDB の VoteStore', () => {
     const send = jest.fn()
       .mockResolvedValueOnce({ Items: [{ votes: 2, momentum: 1414, r_kanto: 1414 }, { votes: 3, momentum: 2000, r_kanto: 1000, r_unknown: 1000 }], LastEvaluatedKey: { pk: 'x' } })
       .mockResolvedValueOnce({ Items: [{ votes: 5, momentum: 3000, r_kyushu: 3000, broken: 'x' }] })
-    const totals = await storeWith(send).sumBuckets('exodus', 900)
+    const totals = await storeWith(send).sumBuckets('world', 'exodus', 900)
     expect(totals.votes).toBe(10)
     expect(totals.contributionUnits).toBe(6414)
     expect(totals.regionUnits).toMatchObject({ kanto: 2414, unknown: 1000, kyushu: 3000, hokkaido: 0 })
@@ -91,7 +92,7 @@ describe('DynamoDB の VoteStore', () => {
 
   test('詰めた文字列の記録を読める', async () => {
     const send = jest.fn().mockResolvedValue({ Items: [{ sk: 'IMPULSE#ikki', packed: `a1.${(1_800_000_000).toString(36)}`, version: 3 }] })
-    const result = await storeWith(send).getSessionVotes('AAAAAAAAAAAAAAAAAAAAAA')
+    const result = await storeWith(send).getSessionVotes('AAAAAAAAAAAAAAAAAAAAAA', 'world')
     expect(result.ikki).toEqual({ votes: [{ id: 'a1', at: 1_800_000_000_000 }], version: 3 })
   })
 
@@ -102,10 +103,47 @@ describe('DynamoDB の VoteStore', () => {
         { sk: 'IMPULSE#revolution', votes: [{ id: 'r1', at: 10 }], version: 1 },
       ],
     })
-    const result = await storeWith(send).getSessionVotes('AAAAAAAAAAAAAAAAAAAAAA')
+    const result = await storeWith(send).getSessionVotes('AAAAAAAAAAAAAAAAAAAAAA', 'world')
     expect(result.exodus).toEqual({ votes: [{ id: 'e1', at: 10 }], version: 2 })
     expect(Object.keys(result)).toEqual(['ikki', 'exodus', 'festival'])
     expect(result.ikki).toEqual({ votes: [], version: 0 })
     expect(send.mock.calls[0][0].input).toMatchObject({ ConsistentRead: true })
+  })
+
+  test('函南町版のキーには対象を入れ、地域の属性を書かない', async () => {
+    const send = jest.fn().mockResolvedValue({})
+    await storeWith(send).commitVote({ ...INPUT, target: 'kannami', region: null })
+    const items = send.mock.calls[0][0].input.TransactItems
+    expect(items[0].Put.Item).toMatchObject({ pk: 'SESSION#AAAAAAAAAAAAAAAAAAAAAA', sk: 'IMPULSE#kannami#ikki' })
+    expect(items[1].Update).toMatchObject({
+      Key: { pk: 'COUNT#kannami#ikki', sk: 'B#000000000000900' },
+      UpdateExpression: 'ADD votes :one, momentum :units SET expiresAt = if_not_exists(expiresAt, :expiresAt)',
+    })
+    expect(items[1].Update.ExpressionAttributeNames).toBeUndefined()
+  })
+
+  test('函南町版の集計は対象付きのキーを読む', async () => {
+    const send = jest.fn().mockResolvedValue({ Items: [{ votes: 1, momentum: 1000 }] })
+    const totals = await storeWith(send).sumBuckets('kannami', 'settle', 900)
+    expect(totals.votes).toBe(1)
+    expect(send.mock.calls[0][0].input.ExpressionAttributeValues).toMatchObject({ ':pk': 'COUNT#kannami#settle' })
+  })
+
+  test('セッションの記録は対象ごとに読み分ける', async () => {
+    const at = `${(1_800_000_000).toString(36)}`
+    const send = jest.fn().mockResolvedValue({
+      Items: [
+        { sk: 'IMPULSE#ikki', packed: `w1.${at}`, version: 1 },
+        { sk: 'IMPULSE#kannami#ikki', packed: `k1.${at}`, version: 2 },
+        { sk: 'IMPULSE#kannami#pack', packed: `k2.${at}`, version: 3 },
+      ],
+    })
+    const store = storeWith(send)
+    const kannami = await store.getSessionVotes('AAAAAAAAAAAAAAAAAAAAAA', 'kannami')
+    expect(Object.keys(kannami)).toEqual(['settle', 'ikki', 'pack'])
+    expect(kannami.ikki).toEqual({ votes: [{ id: 'k1', at: 1_800_000_000_000 }], version: 2 })
+    expect(kannami.settle).toEqual({ votes: [], version: 0 })
+    const world = await store.getSessionVotes('AAAAAAAAAAAAAAAAAAAAAA', 'world')
+    expect(world.ikki).toEqual({ votes: [{ id: 'w1', at: 1_800_000_000_000 }], version: 1 })
   })
 })

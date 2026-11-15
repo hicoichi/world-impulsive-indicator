@@ -3,6 +3,7 @@
 import { CONTRIBUTION_SCALE, contributionOf, contributionUnitsOf, unitsToContribution } from '../../../shared/domain/contribution'
 import { createImpulseRecord, IMPULSE_KEYS, isImpulseKey } from '../../../shared/domain/impulse'
 import { createRegionRecord, isRegionKey, REGION_BUCKETS, REGION_KEYS, UNKNOWN_REGION } from '../../../shared/domain/region'
+import { createTargetImpulseRecord, DEFAULT_TARGET, isImpulseOf, isTargetKey, KANNAMI_IMPULSE_KEYS, KANNAMI_IMPULSE_LABELS, TARGET_KEYS, TARGETS } from '../../../shared/domain/target'
 import { activeVotes, hasReachedLimit, remainingVotes, VOTE_LIMIT, VOTE_WINDOW_MS } from '../../../shared/domain/vote'
 
 describe('衝動', () => {
@@ -73,5 +74,38 @@ describe('地域', () => {
     expect(isRegionKey('kanto')).toBe(true)
     expect(isRegionKey(UNKNOWN_REGION)).toBe(false)
     expect(isRegionKey('tokyo')).toBe(false)
+  })
+})
+
+describe('評価対象（target）', () => {
+  test('対象は world と kannami。既定は world', () => {
+    expect(TARGET_KEYS).toEqual(['world', 'kannami'])
+    expect(DEFAULT_TARGET).toBe('world')
+    expect(isTargetKey('kannami')).toBe(true)
+    expect(isTargetKey('tokyo')).toBe(false)
+    expect(isTargetKey(undefined)).toBe(false)
+  })
+
+  test('オリジナル版の衝動は既存の IMPULSE_KEYS のまま', () => {
+    expect(TARGETS.world.impulses).toEqual(IMPULSE_KEYS)
+    expect(TARGETS.world.usesRegion).toBe(true)
+  })
+
+  test('函南町版の衝動は 骨を埋めたい → 一揆したい → 荷物をまとめたい で、位置情報を使わない', () => {
+    expect(TARGETS.kannami.impulses).toEqual(['settle', 'ikki', 'pack'])
+    expect(KANNAMI_IMPULSE_KEYS.map(key => KANNAMI_IMPULSE_LABELS[key])).toEqual(['骨を埋めたい', '一揆したい', '荷物をまとめたい'])
+    expect(TARGETS.kannami.usesRegion).toBe(false)
+  })
+
+  test('衝動はその対象のものだけを受け付ける', () => {
+    expect(isImpulseOf('kannami', 'settle')).toBe(true)
+    expect(isImpulseOf('kannami', 'festival')).toBe(false)
+    expect(isImpulseOf('world', 'settle')).toBe(false)
+    expect(isImpulseOf('world', 1)).toBe(false)
+  })
+
+  test('対象の衝動ごとの記録を順序どおりに作る', () => {
+    expect(createTargetImpulseRecord('kannami', impulse => impulse.length)).toEqual({ settle: 6, ikki: 4, pack: 4 })
+    expect(Object.keys(createTargetImpulseRecord('world', () => 0))).toEqual(['ikki', 'exodus', 'festival'])
   })
 })

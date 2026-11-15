@@ -14,9 +14,10 @@ function setup() {
   return { store, handler: createApiHandler(deps) }
 }
 
-function event(routeKey: string, options: { token?: string, body?: unknown } = {}): APIGatewayProxyEventV2 {
+function event(routeKey: string, options: { token?: string, body?: unknown, query?: Record<string, string> } = {}): APIGatewayProxyEventV2 {
   return {
     routeKey,
+    queryStringParameters: options.query,
     headers: options.token ? { [SESSION_TOKEN_HEADER]: options.token } : {},
     body: options.body === undefined ? undefined : typeof options.body === 'string' ? options.body : JSON.stringify(options.body),
     isBase64Encoded: false,
@@ -39,6 +40,7 @@ describe('GET /v1/state', () => {
     expect(response.statusCode).toBe(200)
     expect(response.headers?.['cache-control']).toBe('public, max-age=5')
     expect(parse(response)).toEqual({
+      target: 'world',
       impulses: {
         ikki: { votes: 0, momentum: 0, regions: EMPTY_REGIONS },
         exodus: { votes: 0, momentum: 0, regions: EMPTY_REGIONS },
@@ -131,6 +133,80 @@ describe('POST /v1/votes', () => {
     ['地域が座標', { impulse: 'ikki', voteId: 'v1', region: { lat: 35.68, lng: 139.76 } }],
     ['本文が大きすぎる', { impulse: 'ikki', voteId: 'v1', pad: 'x'.repeat(2000) }],
   ])('入力が不正なら 400（%s）', async (_, body) => {
+    const { handler, store } = setup()
+    const response = await handler(event('POST /v1/votes', { token, body }))
+    expect(response.statusCode).toBe(400)
+    expect(store.buckets.size).toBe(0)
+  })
+})
+
+describe('評価対象（target）', () => {
+  test('GET /v1/state?target=kannami は函南町版の衝動だけを返し、地域の分布を含めない', async () => {
+    const { handler } = setup()
+    await handler(event('POST /v1/votes', { token, body: { target: 'kannami', impulse: 'settle', voteId: 'v1' } }))
+    const response = await handler(event('GET /v1/state', { query: { target: 'kannami' } }))
+    expect(response.statusCode).toBe(200)
+    expect(response.headers?.['cache-control']).toBe('public, max-age=5')
+    expect(parse(response)).toEqual({
+      target: 'kannami',
+      impulses: {
+        settle: { votes: 1, momentum: 1 },
+        ikki: { votes: 0, momentum: 0 },
+        pack: { votes: 0, momentum: 0 },
+      },
+    })
+  })
+
+  test('target=world の明示は省略と同じ', async () => {
+    const { handler } = setup()
+    const omitted = await handler(event('GET /v1/state'))
+    const explicit = await handler(event('GET /v1/state', { query: { target: 'world' } }))
+    expect(parse(explicit)).toEqual(parse(omitted))
+  })
+
+  test('函南町版の投票はオリジナル版の集計に入らない', async () => {
+    const { handler } = setup()
+    await handler(event('POST /v1/votes', { token, body: { target: 'kannami', impulse: 'ikki', voteId: 'v1' } }))
+    const world = parse(await handler(event('GET /v1/state')))
+    expect((world.impulses as Record<string, { votes: number }>).ikki?.votes).toBe(0)
+  })
+
+  test('残り枠は対象の衝動ごとに返す', async () => {
+    const { handler } = setup()
+    const created = parse(await handler(event('POST /v1/sessions', { query: { target: 'kannami' } })))
+    expect(created.remaining).toEqual({ settle: VOTE_LIMIT, ikki: VOTE_LIMIT, pack: VOTE_LIMIT })
+    const voted = parse(await handler(event('POST /v1/votes', { token, body: { target: 'kannami', impulse: 'pack', voteId: 'v1' } })))
+    expect(voted).toMatchObject({ result: 'accepted', remaining: { settle: VOTE_LIMIT, ikki: VOTE_LIMIT, pack: VOTE_LIMIT - 1 } })
+    const me = parse(await handler(event('GET /v1/sessions/me', { token, query: { target: 'kannami' } })))
+    expect(me.remaining).toEqual({ settle: VOTE_LIMIT, ikki: VOTE_LIMIT, pack: VOTE_LIMIT - 1 })
+    const meWorld = parse(await handler(event('GET /v1/sessions/me', { token })))
+    expect(meWorld.remaining).toEqual({ ikki: VOTE_LIMIT, exodus: VOTE_LIMIT, festival: VOTE_LIMIT })
+  })
+
+  test('函南町版は地域が null なら受け付ける', async () => {
+    const { handler } = setup()
+    const response = await handler(event('POST /v1/votes', { token, body: { target: 'kannami', impulse: 'settle', voteId: 'v1', region: null } }))
+    expect(response.statusCode).toBe(200)
+  })
+
+  test.each([
+    ['GET /v1/state', undefined],
+    ['POST /v1/sessions', undefined],
+    ['GET /v1/sessions/me', token],
+  ])('知らない対象は 400（%s）', async (routeKey, sessionToken) => {
+    const { handler } = setup()
+    const response = await handler(event(routeKey, { token: sessionToken, query: { target: 'tokyo' } }))
+    expect(response.statusCode).toBe(400)
+  })
+
+  test.each([
+    ['知らない対象', { target: 'tokyo', impulse: 'ikki', voteId: 'v1' }],
+    ['対象が文字列でない', { target: 1, impulse: 'ikki', voteId: 'v1' }],
+    ['函南町版にない衝動', { target: 'kannami', impulse: 'festival', voteId: 'v1' }],
+    ['オリジナル版にない衝動', { target: 'world', impulse: 'settle', voteId: 'v1' }],
+    ['函南町版に地域を送る', { target: 'kannami', impulse: 'settle', voteId: 'v1', region: 'kanto' }],
+    ['函南町版に unknown を送る', { target: 'kannami', impulse: 'settle', voteId: 'v1', region: 'unknown' }],
+  ])('投票の入力が不正なら 400（%s）', async (_, body) => {
     const { handler, store } = setup()
     const response = await handler(event('POST /v1/votes', { token, body }))
     expect(response.statusCode).toBe(400)

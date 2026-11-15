@@ -1,6 +1,6 @@
 // 票の保存先の境界。本番は DynamoDB（dynamo-vote-store.ts）、テストはメモリ上の実装を使う
 
-import type { ImpulseKey } from '../../../shared/domain/impulse'
+import type { TargetKey } from '../../../shared/domain/target'
 import type { RegionBucket } from '../../../shared/domain/region'
 import type { CastVote } from '../../../shared/domain/vote'
 
@@ -13,7 +13,9 @@ export interface SessionVotes {
 
 export interface CommitVoteInput {
   sid: string
-  impulse: ImpulseKey
+  target: TargetKey
+  /** その対象の衝動のキー（検証済み） */
+  impulse: string
   /** 更新後の投票記録（ウィンドウ外の票は除いたもの） */
   votes: CastVote[]
   /** 読み取ったときの版。保存時に一致しなければ競合 */
@@ -26,13 +28,13 @@ export interface CommitVoteInput {
   bucketExpiresAt: number
   /** この票の寄与度（CONTRIBUTION_SCALE 倍の整数） */
   contributionUnits: number
-  /** 寄与度を加算する地域 */
-  region: RegionBucket
+  /** 寄与度を加算する地域。位置情報を使わない対象では null（地域を保存しない） */
+  region: RegionBucket | null
 }
 
 export type CommitVoteResult = 'committed' | 'conflict'
 
-/** ある衝動の、指定した枠以降の合計 */
+/** ある対象のある衝動の、指定した枠以降の合計 */
 export interface BucketTotals {
   votes: number
   /** 寄与度の合計（CONTRIBUTION_SCALE 倍の整数） */
@@ -42,10 +44,10 @@ export interface BucketTotals {
 }
 
 export interface VoteStore {
-  /** セッションの全衝動の投票記録 */
-  getSessionVotes(sid: string): Promise<Record<ImpulseKey, SessionVotes>>
+  /** セッションの、ある対象の全衝動の投票記録 */
+  getSessionVotes(sid: string, target: TargetKey): Promise<Record<string, SessionVotes>>
   /** セッションの記録の更新と、集計の加算を1つのトランザクションで行う */
   commitVote(input: CommitVoteInput): Promise<CommitVoteResult>
   /** 指定した枠以降の票数・寄与度の合計 */
-  sumBuckets(impulse: ImpulseKey, fromBucket: number): Promise<BucketTotals>
+  sumBuckets(target: TargetKey, impulse: string, fromBucket: number): Promise<BucketTotals>
 }
